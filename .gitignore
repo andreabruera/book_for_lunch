@@ -3,6 +3,7 @@ results/
 plots/
 fisher_scores/
 nilearn_cache/
+voxel_selection/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

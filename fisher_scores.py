@@ -89,41 +89,47 @@ def load_subject_runs(runs, map_nifti=None):
 
     for run, infos in tqdm(runs):
 
-        if map_nifti != None:
-            masked_run = nilearn.masking.apply_mask(run, map_nifti).T
-        else:
-            masked_run = run.get_fdata()
-            masked_run = masked_run.reshape(numpy.product(masked_run.shape[:3]), -1)
+        if map_nifti == None:
+            map_nifti = nilearn.masking.compute_brain_mask(run)
+            #masked_run = run.get_fdata()
+            #masked_run = masked_run.reshape(numpy.product(masked_run.shape[:3]), -1)
+        masked_run = nilearn.masking.apply_mask(run, map_nifti).T
 
         for t_i, t in enumerate(infos['start']):
             stimulus = infos['stimulus'][t_i]
 
             if args.analysis == 'time_resolved':
                 fmri_timeseries = masked_run[:, t:t+18]
-            elif args.analysis == 'whole_trial':
+            elif 'whole_trial' in args.analysis:
                 ### Keeping responses from noun+4 to noun+9
-                #fmri_timeseries = numpy.average(masked_run[:, t+6:t+13], \
-                #                                axis=1)
-                beg = t + 4
-                end = t + 13
+                beg = 4
+                end = 11
+                t_one = t + beg
+                t_two = t + end
                 if 'slow' in args.dataset:
-                    beg += 1
-                    end += 1
-                fmri_timeseries = masked_run[:, beg:end].flatten()
+                    t_one += 1
+                    t_two += 1
+                if 'flattened' in args.analysis:
+                    fmri_timeseries = masked_run[:, t_one:t_two].flatten()
+                else:
+                    fmri_timeseries = numpy.average(\
+                                       masked_run[:, t_one:t_two],
+                                       axis=1)
             if stimulus not in sub_data.keys():
                 sub_data[stimulus] = [fmri_timeseries]
             else:
                 sub_data[stimulus].append(fmri_timeseries)
 
         del masked_run
-    return sub_data
+    return sub_data, beg, end
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True, choices=['book_fast','lunch_fast', \
                                                          'book_slow', 'lunch_slow'],
                     help='Specify which dataset to use')
 parser.add_argument('--analysis', required=True, \
-                    choices=['time_resolved', 'whole_trial'], \
+                    choices=['time_resolved', 'whole_trial', 
+                             'whole_trial_flattened'], \
                     help='Average time points, or run classification'
                          'time point by time point?')
 
@@ -132,8 +138,10 @@ args = parser.parse_args()
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
 os.makedirs('region_maps', exist_ok=True)
-dataset_path = os.path.join('/', 'import', 'cogsci', 'andrea', 'dataset', 'neuroscience', \
-                        'dot_{}_bids'.format(args.dataset), 'derivatives',
+dataset_path = os.path.join('/', 'import', 'cogsci', 'andrea', 
+                            'dataset', 'neuroscience',
+                            'dot_{}_bids'.format(args.dataset), 
+                            'derivatives',
                         )
 
 n_subjects = len(os.listdir(dataset_path))
@@ -142,8 +150,8 @@ overall_sub_data = list()
 for s in range(1, n_subjects+1):
     #print(s)
     ### Loading the image
-    sub_path = os.path.join(dataset_path, 'sub-{:02}'.format(s), 'ses-mri', \
-                             'func',
+    sub_path = os.path.join(dataset_path, 'sub-{:02}'.format(s), 
+                             'ses-mri', 'func',
                              )
     n_runs = len([k for k in os.listdir(sub_path) if 'nii' in k])
 
@@ -165,8 +173,8 @@ for s in range(1, n_subjects+1):
         single_run = nilearn.image.clean_img(single_run)
         runs.append((single_run, trial_infos))
     ### Left hemisphere
-    map_nifti = nilearn.image.load_img('region_maps/maps/left_hemisphere.nii')
-    full_sub_data = load_subject_runs(runs, map_nifti)
+    #map_nifti = nilearn.image.load_img('region_maps/maps/left_hemisphere.nii')
+    full_sub_data, beg, end = load_subject_runs(runs)
     dimensionality = list(set([v[0].shape[0] for k, v in full_sub_data.items()]))[0]
     full_sub_data = {k : v for k, v in full_sub_data.items() if k != 'neg neg'}
     overall_sub_data.append(full_sub_data)
@@ -179,7 +187,8 @@ with multiprocessing.Pool() as mp:
     mp.terminate()
     mp.join()
 
-output_folder = os.path.join('fisher_scores', \
+output_folder = os.path.join('voxel_selection', 'fisher_scores', 
+                             '{}_to_{}'.format(beg, end),
                              args.dataset, args.analysis, 
                              )
 os.makedirs(output_folder, exist_ok=True)

@@ -7,6 +7,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 model_name = 'dbmdz/bert-base-italian-xxl-cased'
+#model_name = 'bert-base-multilingual-cased'
 #mode = 'cls'
 #mode = 'average'
 mode = 'span'
@@ -21,7 +22,7 @@ model = AutoModelForMaskedLM.from_pretrained(model_name).to('cuda:1')
 
 entity_vectors = dict()
 
-sentences_folder = 'sentences'
+sentences_folder = os.path.join('resources', 'book_for_lunch_sentences')
 
 with tqdm() as pbar:
     for f in os.listdir(sentences_folder):
@@ -34,12 +35,14 @@ with tqdm() as pbar:
                 inputs = tokenizer(l, return_tensors="pt")
 
                 if mode == 'span':
-                    spans = [i_i for i_i, i in enumerate(inputs['input_ids'].numpy().reshape(-1)) if i == 103][:-1]
+                    spans = [i_i for i_i, i in enumerate(inputs['input_ids'].numpy().reshape(-1)) if i == 103 
+                            #or i==102
+                            ][:-1]
                     if len(spans) > 1:
                         try:
                             assert len(spans) % 2 == 0
                         except AssertionError:
-                            print(l)
+                            #print(l)
                             continue
                         l = re.sub(r'\[SEP\]', '', l)
                         ### Correcting spans
@@ -89,7 +92,7 @@ with tqdm() as pbar:
                     entity_vectors[stimulus].append(mention)
                     pbar.update(1)
 
-out_folder = os.path.join('vectors', model_name.replace('/', '_'), mode)
+out_folder = os.path.join('resources', 'ITBERT_base_avg_big')
 os.makedirs(out_folder, exist_ok=True)
 for k, v in entity_vectors.items():
     with open(os.path.join(out_folder, '{}.vector'.format(k)), 'w') as o:

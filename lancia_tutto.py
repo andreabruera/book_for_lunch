@@ -2,12 +2,13 @@ import itertools
 import pdb
 import os
 
-datasets = ['book_fast', 'lunch_fast',
+datasets = ['book_fast', 
+            'lunch_fast',
             #'book_slow', 'lunch_slow'
             ]
 analyses = ['time_resolved', 
             'whole_trial',
-            'flattened_trial'
+            #'flattened_trial'
             ]
 n_folds = [50, \
            #10, 100, 1000
@@ -17,7 +18,7 @@ cvs = ['average_trials',
        #'replication'
        ]
 features = ['no_reduction', 
-            'anova'
+            #'anova'
             ]
 spatial = ['ROI']
 

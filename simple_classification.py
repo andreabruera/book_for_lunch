@@ -27,10 +27,18 @@ def load_subject_runs(runs, map_nifti=None):
                               'obj' : 3.65, 'conEvent' : 4.41, 'conCoercion' : 4.32, 
                               'conSimple' : 4.46, 'conCoer' : 4.29, 
                               },
+              'column_labels' : {'info' : 0, 'absEvent' : 1, 'absCoercion' : 2,
+                              'absSimple' : 0, 'absCoer' : 2, 
+                              'obj' : 0, 'conEvent' : 1, 'conCoercion' : 2, 
+                              'conSimple' : 0, 'conCoer' : 2, 
+                              },
               }
     ### Separate mapper for lunch
     lunch_mapper = {'conEvent' : 4.37, 'absEvent' : 3.41}
-    sub_data = {'soft' : dict(), 'all' : dict(), 'simple' : dict(), 'verb' : dict(), 'dot' : dict()}
+    sub_data = {'soft' : dict(), 'all' : dict(), 'simple' : dict(), 
+                'verb' : dict(), 'dot' : dict(), 'noun_soft' : dict(), 
+                'verb_soft' : dict(), 'stimuli' : dict(),
+                'columns' : dict()}
 
     for run, infos in tqdm(runs):
 
@@ -56,6 +64,12 @@ def load_subject_runs(runs, map_nifti=None):
             ### Not considering cases with no stimulus
             #if 'abstract' in cat or 'concrete' in cat:
             if cat != '':
+                ### Columns labels
+                col = str(mapper['column_labels'][full_cat])
+                if col not in sub_data['columns'].keys():
+                    sub_data['columns'][col] = dict()
+                if stimulus not in sub_data['columns'][col].keys():
+                    sub_data['columns'][col][stimulus] = list()
                 ### Soft labels
                 soft = str(mapper['soft_labels'][full_cat])
                 if 'lunch' in args.dataset:
@@ -65,6 +79,23 @@ def load_subject_runs(runs, map_nifti=None):
                     sub_data['soft'][soft] = dict()
                 if stimulus not in sub_data['soft'][soft].keys():
                     sub_data['soft'][soft][stimulus] = list()
+                ### verb-only labels
+                verb_soft = stimulus.split()[0]
+                if verb_soft not in sub_data['verb_soft'].keys():
+                    sub_data['verb_soft'][verb_soft] = dict()
+                if stimulus not in sub_data['verb_soft'][verb_soft].keys():
+                    sub_data['verb_soft'][verb_soft][stimulus] = list()
+                ### noun-only labels
+                noun_soft = stimulus.split()[-1]
+                if noun_soft not in sub_data['noun_soft'].keys():
+                    sub_data['noun_soft'][noun_soft] = dict()
+                if stimulus not in sub_data['noun_soft'][noun_soft].keys():
+                    sub_data['noun_soft'][noun_soft][stimulus] = list()
+                ### stimuli labels
+                if stimulus not in sub_data['stimuli'].keys():
+                    sub_data['stimuli'][stimulus] = dict()
+                if stimulus not in sub_data['stimuli'][stimulus].keys():
+                    sub_data['stimuli'][stimulus][stimulus] = list()
                 ### Generic abstract/concrete
                 if cat not in sub_data['all'].keys():
                     sub_data['all'][cat] = dict()
@@ -93,13 +124,17 @@ def load_subject_runs(runs, map_nifti=None):
                         stim = 1
                     ## Keeping responses from noun+4 to noun+4+4
                     beg = t + stim + 4
-                    end = t + stim + 11
+                    end = t + stim + 10
                     if args.analysis == 'whole_trial':
                         fmri_timeseries = numpy.average(masked_run[:, beg:end], \
                                                         axis=1)
                     elif args.analysis == 'flattened_trial':
                         fmri_timeseries = masked_run[:, beg:end].flatten()
                 sub_data['soft'][soft][stimulus].append(fmri_timeseries)
+                sub_data['columns'][col][stimulus].append(fmri_timeseries)
+                sub_data['verb_soft'][verb_soft][stimulus].append(fmri_timeseries)
+                sub_data['noun_soft'][noun_soft][stimulus].append(fmri_timeseries)
+                sub_data['stimuli'][stimulus][stimulus].append(fmri_timeseries)
                 sub_data['all'][cat][stimulus].append(fmri_timeseries)
                 sub_data[full_cat][cat][stimulus].append(fmri_timeseries)
 
@@ -134,7 +169,9 @@ dataset_path = os.path.join('/', 'import', 'cogsci', 'andrea', 'dataset', 'neuro
 n_subjects = len(os.listdir(dataset_path))
 maps_folder = os.path.join('region_maps', 'maps')   
 assert os.path.exists(maps_folder)
-map_names = [n for n in os.listdir(maps_folder) if 'hemisphere' not in n]
+map_names = [n for n in os.listdir(maps_folder) 
+             if 'hemisphere' not in n
+             ]
 map_results = dict()
 os.makedirs('prova', exist_ok=True)
 
@@ -186,6 +223,8 @@ for s in range(1, n_subjects+1):
                
         ### Cleaning run file: detrending and standardizing
         single_run = nilearn.image.clean_img(single_run)
+        ### Smoothing 2*2*2mm
+        #single_run = nilearn.image.smooth_img(single_run, 2)
         runs.append((single_run, trial_infos))
 
     if args.spatial_analysis == 'ROI':
@@ -199,48 +238,92 @@ for s in range(1, n_subjects+1):
             map_nifti = nilearn.image.load_img(map_path)
             full_sub_data = load_subject_runs(runs, map_nifti=map_nifti)
             ### CHECK BEFORE USE!
-            #full_sub_data = {k : v for k, v in full_sub_data.items() if k != 'soft'}
+            full_sub_data = {k : v for k, v in full_sub_data.items() 
+                                  #if k in 
+                                  if k not in 
+                                  #['stimuli']
+                                  [
+                                  'stimuli', 
+                                  #'soft', 
+                                  'noun_soft', 
+                                  #'verb_soft',
+                                  #    'columns']
+                                  #['columns'
+                                  ]
+                                  }
 
             for data_split, sub_data in full_sub_data.items():
-                ### Averaging presentations of the same stimulus
-                if args.cross_validation == 'average_trials':
-                    sub_data = {k : [numpy.average(v_two, axis=0) for k_two, v_two in v.items()] for k, v in sub_data.items()}
+                ### Averaging  presentations of the same stimulus
+                print([len(v_two) for k, v in sub_data.items() for k_two, v_two in v.items()])
+                if args.cross_validation == 'average_trials': 
+                    jump = 6
+                    sub_data = {k : [numpy.average(v_two[beg:beg+jump], axis=0) for k_two, v_two in v.items() for beg in range(0, len(v_two), jump)] for k, v in sub_data.items()}
                 else:
                     n_repetitions = list(set([len(v) for k, v in sub_data.items()]))[0]
                     sub_data = {k : [v_three for k_two, v_two in v.items() for v_three in v_two] for k, v in sub_data.items()}
+                counter = [len(v) for k, v in sub_data.items()]
+                ### Shuffling
+                sub_data = {k : random.sample(v, k=len(v)) for k, v in sub_data.items()}
+                ### Matching number of images
+                sub_data = {k : v[:min(counter)] for k, v in sub_data.items()}
+                print([len(v) for k, v in sub_data.items()])
 
-                assert len(set([len(v) for k, v in sub_data.items()])) == 1
+                if data_split in ['verb_soft', 'noun_soft']: 
+                    labels = list()
+                    samples = list()
 
-                n_items = list(set([len(v) for k, v in sub_data.items()]))[0]
-
-                labels = list()
-                samples = list()
-
-                for i in range(n_items):
                     for k, v in sub_data.items():
-                        if data_split == 'soft':
-                            #k = float(k)
-                            pass
-                        labels.append(k)
-                        samples.append(v[i])
+                        for vec in v:
+                            labels.append(k)
+                            samples.append(vec)
+                else:
+                    assert len(set([len(v) for k, v in sub_data.items()])) == 1
 
-                if data_split == 'soft':
-                    indices = [list(range(i, len(samples), n_items)) for i in range(n_items)]
-                    splits = list(itertools.product(*indices, repeat=1))
+                    n_items = list(set([len(v) for k, v in sub_data.items()]))[0]
+
+                    labels = list()
+                    samples = list()
+
+                    for i in range(n_items):
+                        for k, v in sub_data.items():
+                            if data_split == 'soft':
+                                #k = float(k)
+                                pass
+                            labels.append(k)
+                            samples.append(v[i])
+
+                n_folds = 50
+                #splits = list()
+                #for _ in range(n_folds):
+                #    splits.append(random.sample(set(range(len(samples))), k=int(len(samples)/10)))
+                if 2 == 1:
+                    pass
                 else:
                     ### Averaged trials - all trials for one exemplar are averaged
                     ### Making sure there are at least 2 test items
                     if args.cross_validation == 'average_trials':
-                        one_tenth = max(2, int((len(samples)/10)))
-                        one_label = [i for i in range(0, n_items*2)][::2]
-                        two_label = [i for i in range(1, n_items*2)][::2]
+                        splits = list()
+                        one_tenth = max(1, int((len(samples)/10)/len(set(labels))))
+                        possible_labels = {k : [i_i for i_i, i in enumerate(labels) if i==k] for k in set(labels)}
+                        #one_label = [i for i in range(0, n_items*2)][::2]
+                        #two_label = [i for i in range(1, n_items*2)][::2]
+                        for _ in range(n_folds):
+                            split = list()
+                            for current_labels in possible_labels.values(): 
+                                split.extend(random.sample(current_labels, k=one_tenth))
+                            if len(split) > (len(samples) / 10):
+                                split = random.sample(split, 
+                                                      k=int(len(samples)/10))
+                            splits.append(split)
+                        '''
                         if one_tenth > 2:
                             one_label = itertools.combinations(one_label, r=int(one_tenth/2))
                             two_label = itertools.combinations(two_label, r=int(one_tenth/2))
-                            splits = list(itertools.product(one_label, two_label))
+                            splits = itertools.product(one_label, two_label)
                             splits = [[k for c_two in c for k in c_two] for c in splits]
                         else:
                             splits = list(itertools.product(one_label, two_label))
+                        '''
                     ### Individual_trials - keeping all trials for one exemplar 
                     ### per category out for testing
                     elif args.cross_validation == 'individual_trials':
@@ -265,12 +348,12 @@ for s in range(1, n_subjects+1):
                         splits = list(itertools.product(one_label, two_label))
 
                 ### Randomizing and reducing test splits (default 1000)
-                n_folds = min(len(splits), args.n_folds)
+                #n_folds = min(len(splits), args.n_folds)
                 if args.n_folds == 1000 and n_folds < 100:
                     print('Does not make sense to run this one')
                     continue
-                print('Current split: {} - number of folds: {}'.format(data_split, n_folds)) 
                 splits = random.sample(splits, k=n_folds)
+                print('Current split: {} - number of folds: {}'.format(data_split, n_folds)) 
                 sub_scores = list()
                 logging.info('Running cross-validation')
                 for split in tqdm(splits):
@@ -278,24 +361,27 @@ for s in range(1, n_subjects+1):
                     #train_labels = labels[0:split] + labels[split+one_tenth:]
                     #test_samples = samples[split:split+one_tenth]
                     #test_labels = labels[split:split+one_tenth]
-                    train_samples = [samples[i] for i in range(n_items*2) if i not in split]
-                    train_labels = [labels[i] for i in range(n_items*2) if i not in split]
+                    #train_samples = [samples[i] for i in range(n_items*2) if i not in split]
+                    train_samples = [samples[i] for i in range(len(samples)) if i not in split]
+                    #train_labels = [labels[i] for i in range(n_items*2) if i not in split]
+                    train_labels = [labels[i] for i in range(len(samples)) if i not in split]
                     test_samples = [samples[i] for i in split]
                     test_labels = [labels[i] for i in split]
 
-                    if data_split == 'soft':
-                        #classifier = SVC(gamma='auto')
-                        #classifier = linear_model.Ridge()
-                        classifier = linear_model.RidgeClassifier()
-                    else:
-                        #classifier = SVC(gamma='auto')
+                    model = 'ridge'
+                    if model == 'svc':
+                        classifier = SVC(gamma='auto')
+                    elif model == 'ridge':
                         classifier = linear_model.RidgeClassifier()
                     split_score = list()
                     if args.analysis == 'time_resolved':
                         for t in range(18):
                             t_train = [sample[:, t] for sample in train_samples]
                             t_test = [sample[:, t] for sample in test_samples]
-                            classifier.fit(t_train, train_labels)
+                            try:
+                                classifier.fit(t_train, train_labels)
+                            except ValueError:
+                                import pdb; pdb.set_trace()
                             acc = classifier.score(t_test, test_labels)
                             split_score.append(acc)
 
@@ -310,9 +396,15 @@ for s in range(1, n_subjects+1):
                             train_samples = selector.transform(train_samples)
                             test_samples = selector.transform(test_samples)
 
-                        classifier.fit(train_samples, train_labels)
-                        acc = classifier.score(test_samples, test_labels)
-                        split_score.append(acc)
+                        try:
+                            classifier.fit(train_samples, train_labels)
+                        except ValueError:
+                            import pdb; pdb.set_trace()
+                        try:
+                            acc = classifier.score(test_samples, test_labels)
+                            split_score.append(acc)
+                        except ValueError:
+                            import pdb; pdb.set_trace()
 
                     sub_scores.append(split_score)
 
@@ -327,7 +419,7 @@ for s in range(1, n_subjects+1):
                 else:
                     map_results[map_id][data_split].append(average_scores)
 
-output_folder = os.path.join('results', args.cross_validation, 
+output_folder = os.path.join('results', '{}_{}_{}'.format(args.cross_validation, jump, model), 
                              'simple_classification', \
                              args.dataset, args.analysis, 
                              '{}_folds'.format(args.n_folds), \

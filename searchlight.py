@@ -142,8 +142,8 @@ for s in range(1, n_subjects+1):
 
         runs.append((single_run, trial_infos))
 
-    start = 3
-    end = 9
+    start = 4
+    end = 11
     full_sub_data = load_subject_runs(runs, start, end)
 
     for data_split, sub_data in full_sub_data.items():

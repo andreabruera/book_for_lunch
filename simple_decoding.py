@@ -1,4 +1,5 @@
 import argparse
+import collections
 import itertools
 import nibabel
 import nilearn
@@ -11,7 +12,7 @@ import sklearn
 
 from matplotlib import pyplot
 from nilearn import datasets, image, input_data, plotting
-from scipy import stats
+from scipy import spatial, stats
 from sklearn import feature_selection
 from sklearn.linear_model import Ridge
 from sklearn.svm import SVC
@@ -23,14 +24,19 @@ def read_vectors(vectors_folder):
     for f in os.listdir(vectors_folder):
         assert '.vector' in f
         with open(os.path.join(vectors_folder, f)) as i:
-            vecs = numpy.array([l.strip().split('\t') for l in i.readlines()], dtype=numpy.float64)
+            if 'selected' in vectors_folder:
+                vecs = numpy.array([l.strip() for l in i.readlines()], dtype=numpy.float64)
+            else:
+                vecs = numpy.array([l.strip().split('\t') for l in i.readlines()], dtype=numpy.float64)
         if vecs.shape[0] == 0:
             print(f)
             continue
         else:
-            vecs = numpy.nanmean(vecs, axis=0)
+            if vecs.shape[0] != 768:
+                vecs = numpy.nanmean(vecs, axis=0)
             assert vecs.shape[0] == 768
             vectors[f.replace('_', ' ').split('.')[0]] = vecs
+
     return vectors
 
 def read_events(events_path):
@@ -54,6 +60,12 @@ def read_events(events_path):
     trial_infos = {'start' : list(), 'stimulus' : list(), 'category' : list()}
     for t_i, t in enumerate(list(range(len(events['onset'])))[1:][::jump]):
         cat = events['value'][t:t+jump][verb_idx]
+        if cat in ['obj', 'info']:
+            cat = 'simple'
+        elif 'Event' in cat:
+            cat = 'verb'
+        elif 'Coercion' in cat:
+            cat = 'dot'
         stimulus = events['trial_type'][t:t+jump]
         stimulus = '{} {}'.format(stimulus[verb_idx], stimulus[noun_idx])
 
@@ -68,41 +80,49 @@ def load_subject_runs(runs, map_nifti=None):
 
     for run, infos in tqdm(runs):
 
-        if map_nifti != None:
-            masked_run = nilearn.masking.apply_mask(run, map_nifti).T
-        else:
-            masked_run = run.get_fdata()
-            masked_run = masked_run.reshape(numpy.product(masked_run.shape[:3]), -1)
+        if map_nifti == None:
+            map_nifti = nilearn.masking.compute_brain_mask(run)
+        #if map_nifti != None:
+        #else:
+        #    masked_run = run.get_fdata()
+        #    masked_run = masked_run.reshape(numpy.product(masked_run.shape[:3]), -1)
+        masked_run = nilearn.masking.apply_mask(run, map_nifti).T
 
         for t_i, t in enumerate(infos['start']):
             stimulus = infos['stimulus'][t_i]
 
             if args.analysis == 'time_resolved':
                 fmri_timeseries = masked_run[:, t:t+18]
-            elif args.analysis == 'whole_trial':
-                ### Keeping responses from noun+4 to noun+9
-                #fmri_timeseries = numpy.average(masked_run[:, t+6:t+13], \
-                #                                axis=1)
-                beg = t + 4
-                end = t + 13
+            elif 'whole_trial' in args.analysis:
+                beg = 4
+                end = 11
+                t_one = t + beg
+                t_two = t + end
                 if 'slow' in args.dataset:
-                    beg += 1
-                    end += 1
-                fmri_timeseries = masked_run[:, beg:end].flatten()
+                    t_one += 1
+                    t_two += 1
+                if 'flattened' in args.analysis:
+                    fmri_timeseries = masked_run[:, t_one:t_two].flatten()
+                ### Keeping responses from noun+4 to noun+9
+                else:
+                    fmri_timeseries = numpy.average(
+                                       masked_run[:, t_one:t_two],
+                                       axis=1)
             if stimulus not in sub_data.keys():
                 sub_data[stimulus] = [fmri_timeseries]
             else:
                 sub_data[stimulus].append(fmri_timeseries)
 
         del masked_run
-    return sub_data
+    return sub_data, beg, end
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True, choices=['book_fast','lunch_fast', \
                                                          'book_slow', 'lunch_slow'],
                     help='Specify which dataset to use')
 parser.add_argument('--analysis', required=True, \
-                    choices=['time_resolved', 'whole_trial'], \
+                    choices=['time_resolved', 'whole_trial', 
+                             'whole_trial_flattened'], \
                     help='Average time points, or run classification'
                          'time point by time point?')
 parser.add_argument('--spatial_analysis', choices=['ROI', 'all'], required=True, \
@@ -113,6 +133,8 @@ parser.add_argument('--cross_validation', choices=['individual_trials', 'average
                     required=True, help = 'Specifies how features are to be selected')
 parser.add_argument('--n_folds', type=int, default=1000, \
                     help = 'Specifies how many folds to test on')
+parser.add_argument('--rsa', action='store_true', default=False, \
+                    help = 'Specifies whether to run the RSA analysis')
 parser.add_argument('--vectors_folder', type=str, required=True, \
                     help = 'Specifies where the vectors are stored')
 
@@ -133,7 +155,10 @@ map_results = dict()
 vectors = read_vectors(args.vectors_folder)
 decoding_results = list()
 
+all_results = collections.defaultdict(list)
+trials = dict()
 for s in range(1, n_subjects+1):
+#for s in range(1, 3):
     #print(s)
     ### Loading the image
     sub_path = os.path.join(dataset_path, 'sub-{:02}'.format(s), 'ses-mri', \
@@ -150,6 +175,15 @@ for s in range(1, n_subjects+1):
         events_path = os.path.join(sub_path, 'sub-{:02}_ses-mri_task-dot{}_run-{:02}_events.tsv'.format(s, args.dataset.replace('_', ''), r))
 
         trial_infos = read_events(events_path)
+        with open('{}_stimuli.tsv'.format(args.dataset), 'w') as o:
+            for v, k in zip(trial_infos['category'], trial_infos['stimulus']):
+                ke = k.replace("'", ' ')
+                ke = ke.split()
+                new_k = '{} {}'.format(ke[0], ke[2]) if len(ke)==3 else ' '.join(ke)
+                if new_k not in trials.keys():
+                    trials[new_k] = v
+                if 'neg neg' not in k:
+                    o.write('{}\t{}\n'.format(k, v))
 
         ### Reading fMRI run
         file_path = os.path.join(sub_path, 'sub-{:02}_ses-mri_task-dot{}_run-{:02}_bold.nii'.format(s, args.dataset.replace('_', ''), r))
@@ -161,11 +195,12 @@ for s in range(1, n_subjects+1):
 
     if args.spatial_analysis == 'all':
 
+        sub_results = collections.defaultdict(list)
         logging.info('Masking using Fisher feature selection')
         #raise RuntimeError('Part to be implemented')
         ### Left hemisphere
-        map_nifti = nilearn.image.load_img('region_maps/maps/left_hemisphere.nii')
-        full_sub_data = load_subject_runs(runs, map_nifti)
+        #map_nifti = nilearn.image.load_img('region_maps/maps/left_hemisphere.nii')
+        full_sub_data, beg, end = load_subject_runs(runs)
         #full_sub_data = load_subject_runs(runs)
         ### Averaging, keeping only one response per stimulus
         sub_data = {k : numpy.average(v, axis=0) for k, v in full_sub_data.items()}
@@ -173,18 +208,35 @@ for s in range(1, n_subjects+1):
         ### Extracting 5k random indices
         #random_indices = random.sample(list(range(dimensionality)), k=10000)
         #sub_data = {k : v[random_indices] for k, v in sub_data.items()}
-        with open(os.path.join('fisher_scores', args.dataset, args.analysis, 'sub-{:02}.fisher'.format(s))) as i:
+        with open(os.path.join('voxel_selection',
+                               'fisher_scores', 
+                               '{}_to_{}'.format(beg, end),
+                               args.dataset, args.analysis, 
+                               'sub-{:02}.fisher'.format(s))) as i:
             lines = numpy.array([l.strip().split('\t') for l in i.readlines()][0], dtype=numpy.float64)
         assert len(lines) == dimensionality
         sorted_dims = sorted(list(enumerate(lines)), key=lambda item : item[1], reverse=True)
-        n_dims = 10000
+        n_dims = 5000
         selected_dims = [k[0] for k in sorted_dims[:n_dims]]
         sub_data = {k : v[selected_dims] for k, v in sub_data.items()}
 
         ### Reduce keys to actually present
+        ### Correcting vectors and brain data keys
+        sub_data_keys = {tuple(k.replace("'", ' ').split()) : k  for k in sub_data.keys()}
+        sub_data_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in sub_data_keys.items()}
+        sub_data = {k : sub_data[v] for k, v in sub_data_keys.items()}
+        vectors_keys = {tuple(k.replace("_", ' ').split()) : k  for k in vectors.keys()}
+        vectors_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in vectors_keys.items()}
+        vectors = {k : vectors[v] for k, v in vectors_keys.items()}
+        ### Limiting
         sub_data = {k : v for k, v in sub_data.items() if k in vectors.keys()}
         vectors = {k : vectors[k] for k, v in sub_data.items()}
         combs = list(itertools.combinations(list(vectors.keys()), 2))
+        ### RSA decoding
+        if args.rsa:
+            logging.info('Computing RSA vectors...')
+            sub_data = {k : [scipy.stats.spearmanr(v, v_two)[0] for k_two, v_two in sub_data.items() if k!=k_two] for k, v in sub_data.items()}
+            vectors = {k : [scipy.stats.spearmanr(v, v_two)[0] for k_two, v_two in vectors.items() if k!=k_two] for k, v in vectors.items()}
         accuracies = list()
         ### Splitting
         for c in tqdm(combs):
@@ -211,6 +263,21 @@ for s in range(1, n_subjects+1):
                 accuracies.append(0)
         accuracy = numpy.average(accuracies)
         print(accuracy)
+        for c, a in zip(combs, accuracies):
+            sub_results[c].append(a)
+        ### Preparing per-category results
+        clean_results = collections.defaultdict(list)
+        for k, v in sub_results.items():
+            if k[0] not in trials.keys() or k[1] not in trials.keys():
+                print(k)
+            else:
+                if trials[k[0]] == trials[k[1]]:
+                    clean_results[trials[k[0]]].extend(v)
+                else:
+                    new_k = '_'.join(sorted([trials[k[0]], trials[k[1]]]))
+                    clean_results[new_k].extend(v)
+        for k, v in clean_results.items():
+            all_results[k].append(numpy.average(v))
         decoding_results.append(accuracy)
 
     if args.spatial_analysis == 'ROI':
@@ -335,8 +402,9 @@ for s in range(1, n_subjects+1):
                 else:
                     map_results[map_id][data_split].append(average_scores)
 
+
 output_folder = os.path.join('results', args.cross_validation, 
-                             'simple_decoding', \
+        '{}_{}_simple_decoding_rsa_{}'.format(n_dims, args.vectors_folder.split('/')[1], args.rsa), \
                              args.dataset, args.analysis, 
                              'pairwise', \
                              args.spatial_analysis, \
@@ -344,5 +412,12 @@ output_folder = os.path.join('results', args.cross_validation,
                              )
 os.makedirs(output_folder, exist_ok=True)
 with open(os.path.join(output_folder, 'accuracies.results'), 'w') as o:
-    for acc in decoding_results:
-        o.write('{}\n'.format(acc))
+    o.write('overall_accuracy\t')
+    for k, v in all_results.items():
+        o.write('{}\t'.format(k))
+    o.write('\n')
+    for acc_i, acc in enumerate(decoding_results):
+        o.write('{}\t'.format(acc))
+        for k, v in all_results.items():
+            o.write('{}\t'.format(v[acc_i]))
+        o.write('\n')
