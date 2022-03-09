@@ -12,6 +12,7 @@ from tqdm import tqdm
 template = nilearn.datasets.load_mni152_template()
 
 folder = os.path.join('results', 'rsa_searchlight')
+#folder = os.path.join('results', 'searchlight')
 search_results = dict()
 
 print('Loading images')

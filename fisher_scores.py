@@ -132,6 +132,8 @@ parser.add_argument('--analysis', required=True, \
                              'whole_trial_flattened'], \
                     help='Average time points, or run classification'
                          'time point by time point?')
+parser.add_argument('--spatial_analysis', choices=['ROI', 'all', 'language_areas'], required=True, \
+                    help = 'Specifies how features are to be selected')
 
 args = parser.parse_args()
 
@@ -146,6 +148,8 @@ dataset_path = os.path.join('/', 'import', 'cogsci', 'andrea',
 
 n_subjects = len(os.listdir(dataset_path))
 overall_sub_data = list()
+maps_folder = os.path.join('region_maps', 'maps')   
+assert os.path.exists(maps_folder)
 
 for s in range(1, n_subjects+1):
     #print(s)
@@ -174,7 +178,15 @@ for s in range(1, n_subjects+1):
         runs.append((single_run, trial_infos))
     ### Left hemisphere
     #map_nifti = nilearn.image.load_img('region_maps/maps/left_hemisphere.nii')
-    full_sub_data, beg, end = load_subject_runs(runs)
+    if args.spatial_analysis == 'language_areas':
+        map_path = os.path.join(maps_folder, 'language_areas.nii')
+        assert os.path.exists(map_path)
+        logging.info('Masking language areas...')
+        map_nifti = nilearn.image.load_img(map_path)
+    else:
+        map_nifti = None
+
+    full_sub_data, beg, end = load_subject_runs(runs, map_nifti)
     dimensionality = list(set([v[0].shape[0] for k, v in full_sub_data.items()]))[0]
     full_sub_data = {k : v for k, v in full_sub_data.items() if k != 'neg neg'}
     overall_sub_data.append(full_sub_data)
@@ -189,7 +201,8 @@ with multiprocessing.Pool() as mp:
 
 output_folder = os.path.join('voxel_selection', 'fisher_scores', 
                              '{}_to_{}'.format(beg, end),
-                             args.dataset, args.analysis, 
+                             args.dataset, args.analysis,
+                             args.spatial_analysis,
                              )
 os.makedirs(output_folder, exist_ok=True)
 

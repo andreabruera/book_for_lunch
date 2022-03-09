@@ -47,16 +47,21 @@ vatl = ['Temporal Fusiform Cortex, anterior division', \
 relevant_regions['ventral_anterior_temporal_lobe'] = vatl
 center['ventral_anterior_temporal_lobe'] = (-24, -2, -36)
 
+
 region_indices = dict()
 for k, v in relevant_regions.items():
     for n in v:
         assert n in labels
     region_indices[k] = [labels.index(n) for n in v]
+### All regions
+region_indices['language_areas'] = [labels.index(n) for k, v in relevant_regions.items() for n in v]
+center['language_areas'] = (-50, 28, 8)
 
 masker = nilearn.input_data.NiftiLabelsMasker(labels_img=maps, standardize=True, \
                                               memory='nilearn_cache', resampling_target='labels')
-template_path = 'preprocessing/spm12/canonical/avg152T1.nii'
-template = nilearn.image.load_img(template_path)
+#template_path = 'resources/spm12/canonical/avg152T1.nii'
+#template = nilearn.image.load_img(template_path)
+template = nilearn.datasets.load_mni152_template()
 dataset_path = os.path.join('/', 'import', 'cogsci', 'andrea', 'dataset', 'neuroscience', \
                         'dot_book_fast_bids', 'derivatives', 
                         )
@@ -101,14 +106,16 @@ for s in range(1, n_subjects+1):
         file_path = os.path.join(sub_path, 'sub-{:02}_ses-mri_task-dotbookfast_run-{:02}_bold.nii'.format(s, r))
 
         single_run = nilearn.image.load_img(file_path)
-        adapted_maps = nilearn.image.resample_to_img(maps, nilearn.image.index_img(single_run, 6))
+        single_run = nilearn.image.mean_img(single_run)
+        #adapted_maps = nilearn.image.resample_to_img(maps, nilearn.image.index_img(single_run, 6))
         ### Just plotting to check whether everything went fine
-        new_img = nilearn.image.resample_to_img(nilearn.image.index_img(single_run, 6), template)
+        #new_img = nilearn.image.resample_to_img(nilearn.image.index_img(single_run, 6), template)
         #old_img = nilearn.image.index_img(single_run, 6)
 
         plotting.plot_stat_map(
                 #adapted_maps,
-                new_img,
+                #new_img,
+                single_run,
                 bg_img=template,
                 cut_coords=(0, 0, 0),
                 threshold=3,
@@ -118,7 +125,9 @@ for s in range(1, n_subjects+1):
         pyplot.clf()
         pyplot.close()
 
-        maps_data = adapted_maps.get_fdata()
+        #maps_data = adapted_maps.get_fdata()
+        maps = nilearn.image.resample_to_img(maps, single_run, interpolation='nearest')
+        maps_data = maps.get_fdata()
         region_maps = dict()
         for region, indices in region_indices.items():
             ### Creating an array full of False, just to fill it later
@@ -128,12 +137,16 @@ for s in range(1, n_subjects+1):
                                           maps_data==index)
             region_map = numpy.where(region_map==True, 1, 0)
             ### Considering only the left hemisphere
+            '''
             for x in range(region_map.shape[0]):
                 for y in range(region_map.shape[1]):
                     for z in range(region_map.shape[2]):
                         if x < region_map.shape[0]/2:
                             region_map[x, y, z] = 0
-            new_mask = nilearn.image.new_img_like(ref_niimg=adapted_maps,\
+            '''
+            new_mask = nilearn.image.new_img_like(
+                          #ref_niimg=adapted_maps,\
+                          ref_niimg=maps,
                           data=region_map)
             cut_coords = center[region]
             plotting.plot_stat_map(new_mask,
@@ -153,6 +166,7 @@ for s in range(1, n_subjects+1):
             nibabel.save(new_mask, os.path.join(out_folder, '{}.nii'.format(region)))
             region_maps[region] = region_map
 
+        '''
         #temp_resamp = nilearn.image.resample_to_img(template, nilearn.image.index_img(single_run, 6)).get_fdata()
         resamp = nilearn.masking.compute_brain_mask(nilearn.image.index_img(single_run, 6)).get_fdata()
         ### Right hemisphere mask
@@ -212,3 +226,4 @@ for s in range(1, n_subjects+1):
         os.makedirs(out_folder, exist_ok=True)
         nibabel.save(new_mask, os.path.join(out_folder, 'left_hemisphere.nii'))
         region_maps[region] = region_map
+        '''

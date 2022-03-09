@@ -253,7 +253,7 @@ for s in range(1, n_subjects+1):
         _, adj_matrix = _apply_mask_and_get_affinity(
                                                      #seeds, sample_img, 
                                                      process_mask_coords, sample_img, 
-                                                     radius=12., 
+                                                     radius=6., 
                                                      allow_overlap=True, 
                                                      mask_img=whole_brain)
                                                      #mask_img=half_brain)

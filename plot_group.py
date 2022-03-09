@@ -4,8 +4,8 @@ import os
 
 from nilearn import image, plotting
 
-folder = os.path.join('results', 'group_searchlight')
-out_folder = os.path.join('plots', 'group_searchlight')
+folder = os.path.join('results', 'group_rsa_searchlight')
+out_folder = os.path.join('plots', 'group_rsa_searchlight')
 os.makedirs(out_folder, exist_ok=True)
 for f in os.listdir(folder):
     if 'nii' in f:
@@ -13,7 +13,8 @@ for f in os.listdir(folder):
         ### Whole trial
         if len(img.shape) == 3:
             nilearn.plotting.plot_stat_map(img, 
-                      threshold=0.4, vmax=1.0,
+                      #threshold=0.4, 
+                      vmax=.8,
                       display_mode='mosaic',
                       output_file=os.path.join(out_folder, \
                                     f.replace('nii','jpg')))
