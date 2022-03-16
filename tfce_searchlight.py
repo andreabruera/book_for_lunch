@@ -1,3 +1,4 @@
+import argparse
 import mne
 import nilearn
 import numpy
@@ -9,9 +10,17 @@ from nilearn.input_data.nifti_spheres_masker import _apply_mask_and_get_affinity
 from scipy import stats
 from tqdm import tqdm
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--target', choices=['concreteness', 'familiarity', 'word_vectors'],
+                    required=True, help='What model to consider?')
+parser.add_argument('--data_split', choices=['all', 'dot', 
+                    'verb', 'simple'], required=True, \
+                    help = 'Which data split to use?')
+args = parser.parse_args()
+
 template = nilearn.datasets.load_mni152_template()
 
-folder = os.path.join('results', 'rsa_searchlight_continuous')
+folder = os.path.join('results', 'rsa_searchlight_{}_{}'.format(args.target, args.data_split))
 #folder = os.path.join('results', 'searchlight')
 search_results = dict()
 
@@ -19,22 +28,21 @@ print('Loading images')
 with tqdm() as pbar:
     for root, direc, filez in os.walk(folder):
         for f in filez:
-            if 'whole_trial' in root:
-                #print(f)
-                split_root = root.split('/')
-                split = split_root[-1]
-                analysis = split_root[-2]
-                dataset = split_root[-3]
-                key = (split, analysis, dataset)
+            #print(f)
+            split_root = root.split('/')
+            split = split_root[-1]
+            analysis = split_root[-2]
+            dataset = split_root[-3]
+            key = (split, analysis, dataset)
 
-                nii_img = nilearn.image.load_img(os.path.join(root, f))
-                mask = nilearn.masking.compute_brain_mask(nii_img)
-                sub_data = nilearn.masking.apply_mask(nii_img, mask)
-                if key not in search_results.keys():
-                    search_results[key] = [sub_data]
-                else:
-                    search_results[key].append(sub_data)
-                pbar.update(1)
+            nii_img = nilearn.image.load_img(os.path.join(root, f))
+            mask = nilearn.masking.compute_brain_mask(nii_img)
+            sub_data = nilearn.masking.apply_mask(nii_img, mask)
+            if key not in search_results.keys():
+                search_results[key] = [sub_data]
+            else:
+                search_results[key].append(sub_data)
+            pbar.update(1)
 
 print('Loading adjacency matrix')
 ### Computing adjacency matrix
@@ -83,7 +91,7 @@ _, adj_matrix = _apply_mask_and_get_affinity(
 print('Loaded!')
 #empty_brain = numpy.zeros(seeds_gen.shape)
 empty_brain = numpy.zeros(whole_brain.shape)
-output_folder = os.path.join('results', 'group_rsa_searchlight_continuous')
+output_folder = os.path.join('results', 'group_rsa_searchlight_{}'.format(args.target))
 os.makedirs(output_folder, exist_ok=True)
 
 for k, subs in search_results.items():
@@ -99,6 +107,7 @@ for k, subs in search_results.items():
         subs.append(sub_coll)
     '''
 
+    '''
     if 'time_resolved' in k[-2]:
         continue
         times = list()
@@ -106,11 +115,9 @@ for k, subs in search_results.items():
             current_subs = [s[:,t] for s in subs]
             current_subs = numpy.array(current_subs)
             ### Difference between actual scores and baseline
-            '''
             #ps = scipy.stats.ttest_1samp(current_subs, 0.5, alternative='greater')[1]
             #ps = mne.stats.fdr_correction(ps)[1]
             #import pdb; pdb.set_trace()
-            '''
             current_subs = current_subs-0.5
             ts,one,ps,two = mne.stats.permutation_cluster_1samp_test(current_subs, tail=1,
                                                                threshold=dict(start=0, step=0.2),
@@ -124,30 +131,30 @@ for k, subs in search_results.items():
                     sig_places.append((s, p))
             times.append(current_brain)
         current_brain = numpy.stack(times, axis=-1)
+    '''
 
-    if 'whole_trial' in k:
-        #continue
-        subs = numpy.array(subs)
-        ### Difference between actual scores and baseline
-        '''
-        ps = scipy.stats.ttest_1samp(subs, 0.5, alternative='greater')[1]
-        ps = mne.stats.fdr_correction(ps)[1]
-        import pdb; pdb.set_trace()
-        '''
-        #subs = subs-0.5
-        ts,one,ps,two = mne.stats.permutation_cluster_1samp_test(subs, tail=1,
-                                                           threshold=dict(start=0, step=0.2),
-                                                           adjacency=adj_matrix, n_jobs=48)
-        current_brain = empty_brain.copy()
-        current_brain[bool_mask] = ps
-        sig_places = list()
-        print([k, numpy.amin(ps)])
-        '''
-        for s, p in zip(seeds, ps):
-            current_brain[s] = 1-p
-            if p <= 0.05:
-                sig_places.append((s, p))
-        '''
+    #continue
+    subs = numpy.array(subs)
+    ### Difference between actual scores and baseline
+    '''
+    ps = scipy.stats.ttest_1samp(subs, 0.5, alternative='greater')[1]
+    ps = mne.stats.fdr_correction(ps)[1]
+    import pdb; pdb.set_trace()
+    '''
+    #subs = subs-0.5
+    ts,one,ps,two = mne.stats.permutation_cluster_1samp_test(subs, tail=1,
+                                                       threshold=dict(start=0, step=0.2),
+                                                       adjacency=adj_matrix, n_jobs=48)
+    current_brain = empty_brain.copy()
+    current_brain[bool_mask] = ps
+    sig_places = list()
+    print([k, numpy.amin(ps)])
+    '''
+    for s, p in zip(seeds, ps):
+        current_brain[s] = 1-p
+        if p <= 0.05:
+            sig_places.append((s, p))
+    '''
 
     current_brain = nilearn.image.new_img_like(ref_niimg=whole_brain, 
                                            data=current_brain)

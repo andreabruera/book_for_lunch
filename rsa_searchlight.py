@@ -133,8 +133,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True, choices=['book_fast','lunch_fast', \
                                                          'book_slow', 'lunch_slow'],
                     help='Specify which dataset to use')
-parser.add_argument('--target', choices=['familiarity', 'concreteness', 'word_vectors'], required=True, \
+parser.add_argument('--target', choices=['familiarity', 'concreteness', 
+                    'imageability', 'word_vectors'], required=True, \
                     help = 'Which model to look for?')
+parser.add_argument('--data_split', choices=['all', 'dot', 
+                    'verb', 'simple'], required=True, \
+                    help = 'Which data split to use?')
 parser.add_argument('--vectors_folder', type=str, required=True, \
                     help = 'Specifies where the vectors are stored')
 args = parser.parse_args()
@@ -153,7 +157,7 @@ map_results = dict()
 template = nilearn.datasets.load_mni152_template()
 
 vectors = read_vectors(args)
-output_folder = os.path.join('results', 'rsa_searchlight_{}'.format(args.target), 
+output_folder = os.path.join('results', 'rsa_searchlight_{}_{}'.format(args.target, args.data_split), 
                              args.dataset, args.vectors_folder.split('_')[-1].split('_')[0])
 os.makedirs(output_folder, exist_ok=True)
 for s in range(1, n_subjects+1):
@@ -199,23 +203,28 @@ for s in range(1, n_subjects+1):
     sub_data_keys = {tuple(k.replace("'", ' ').split()) : k  for k in sub_data.keys()}
     sub_data_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in sub_data_keys.items()}
     sub_data = {k : sub_data[v] for k, v in sub_data_keys.items()}
+    with open('book_fast_stimuli_ratings.tsv') as i:
+        lines = [l.strip().split('\t') for l in i.readlines()]
 
     if args.target == 'concreteness':
-        with open('book_fast_stimuli_ratings.tsv') as i:
-            lines = [l.strip().split('\t') for l in i.readlines()]
         model_data = {l[0] : float(l[4]) for l in lines[1:]}
     elif args.target == 'familiarity':
-        with open('book_fast_stimuli_ratings.tsv') as i:
-            lines = [l.strip().split('\t') for l in i.readlines()]
         model_data = {l[0] : float(l[2]) for l in lines[1:]}
+    elif args.target == 'imageability':
+        model_data = {l[0] : float(l[6]) for l in lines[1:]}
     elif args.target == 'word_vectors':
         vectors_keys = {tuple(k.replace("_", ' ').split()) : k  for k in vectors.keys()}
         vectors_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in vectors_keys.items()}
         model_data = {k : vectors[v] for k, v in vectors_keys.items()}
     ### Limiting
+    if args.data_split != 'all':
+        stimuli = [l[0] for l in lines[1:] if args.data_split in l[1]]
+    else:
+        stimuli = list(model_data.keys())
+    model_data = {s : model_data[s] for s in stimuli}
     sub_data = {k : v for k, v in sub_data.items() if k in model_data.keys()}
     combs = list(itertools.combinations(list(sub_data.keys()), 2))
-    if args.target in ['concreteness', 'familiarity']:
+    if args.target in ['concreteness', 'familiarity', 'imageability']:
         model_sims = [abs(model_data[c[0]]-model_data[c[1]]) for c in combs]
     elif args.target == 'word_vectors':
         model_sims = [scipy.stats.spearmanr(vectors[c[0]], vectors[c[1]])[0] for c in combs]
