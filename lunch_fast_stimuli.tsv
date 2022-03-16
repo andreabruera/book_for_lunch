@@ -1,31 +1,31 @@
 preparare il viaggio	absSimple
-confezionare il regalo	verb
-cucinare il piatto	verb
-cucinare la ricetta	verb
+confezionare il regalo	verb_concrete
+cucinare il piatto	verb_concrete
+cucinare la ricetta	verb_concrete
 pagare la festa	absSimple
 portare l'aperitivo	conCoer
 organizzare l'aperitivo	absCoer
 pagare il viaggio	absSimple
-annullare la decisione	verb
-organizzare la giornata	verb
+annullare la decisione	verb_abstract
+organizzare la giornata	verb_abstract
 annullare l'aperitivo	absCoer
-annullare l'iscrizione	verb
+annullare l'iscrizione	verb_abstract
 prenotare il pranzo	absCoer
 pagare la gita	absSimple
-portare la camicia	verb
+portare la camicia	verb_concrete
 cucinare il pranzo	conCoer
-confezionare il pacco	verb
+confezionare il pacco	verb_concrete
 preparare l'incontro	absSimple
 pagare il risotto	conSimple
 portare la cena	conCoer
 annullare la cena	absCoer
-portare l'acqua	verb
+portare l'acqua	verb_concrete
 pagare la pizza	conSimple
-prenotare il concerto	verb
+prenotare il concerto	verb_abstract
 organizzare la cena	absCoer
-organizzare il corso	verb
+organizzare il corso	verb_abstract
 preparare il pane	conSimple
-prenotare il posto	verb
+prenotare il posto	verb_abstract
 prenotare la cena	absCoer
 preparare la festa	absSimple
 confezionare la cena	conCoer

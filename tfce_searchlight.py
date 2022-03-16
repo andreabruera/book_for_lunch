@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 template = nilearn.datasets.load_mni152_template()
 
-folder = os.path.join('results', 'rsa_searchlight')
+folder = os.path.join('results', 'rsa_searchlight_continuous')
 #folder = os.path.join('results', 'searchlight')
 search_results = dict()
 
@@ -83,7 +83,7 @@ _, adj_matrix = _apply_mask_and_get_affinity(
 print('Loaded!')
 #empty_brain = numpy.zeros(seeds_gen.shape)
 empty_brain = numpy.zeros(whole_brain.shape)
-output_folder = os.path.join('results', 'group_rsa_searchlight')
+output_folder = os.path.join('results', 'group_rsa_searchlight_continuous')
 os.makedirs(output_folder, exist_ok=True)
 
 for k, subs in search_results.items():

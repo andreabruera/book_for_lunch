@@ -14,11 +14,39 @@ from matplotlib import pyplot
 from nilearn import datasets, image, input_data, plotting
 from scipy import spatial, stats
 from sklearn import feature_selection
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import Ridge, RidgeClassifier
 from sklearn.svm import SVC
 from tqdm import tqdm
 
-from utils import read_vectors
+def read_vectors(args):
+
+    vectors = dict()
+    for f in os.listdir(args.vectors_folder):
+        assert '.vector' in f
+        with open(os.path.join(args.vectors_folder, f)) as i:
+            if 'selected' in args.vectors_folder:
+                vecs = numpy.array([l.strip() for l in i.readlines()], dtype=numpy.float64)
+            else:
+                vecs = numpy.array([l.strip().split('\t') for l in i.readlines()], dtype=numpy.float64)
+        if vecs.shape[0] == 0:
+            print(f)
+            continue
+        else:
+            ### Randomizing vector order
+            numpy.random.shuffle(vecs)
+            ### Limiting to 32 mentions
+            vecs = vecs[:32, :]
+            if vecs.shape[0] not in [768, 300]:
+                if args.vector_averaging == 'avg':
+                    ### Average
+                    vecs = numpy.nanmean(vecs, axis=0)
+                else:
+                    ### Maxpool
+                    vecs = numpy.array([max([v[i] for v in vecs]) for i in range(vecs.shape[-1])], dtype=numpy.float64)
+            assert vecs.shape[0] in [768, 300]
+            vectors[f.replace('_', ' ').split('.')[0]] = vecs
+
+    return vectors
 
 def read_events(events_path):
     with open(events_path) as i:
@@ -121,6 +149,9 @@ parser.add_argument('--feature_selection', choices=['anova', 'no_reduction'], re
                     help = 'Specifies how features are to be selected')
 parser.add_argument('--cross_validation', choices=['individual_trials', 'average_trials', 'replication'], \
                     required=True, help = 'Specifies how features are to be selected')
+parser.add_argument('--target', 
+                    choices=['class', 'continuous'], \
+                    required=True, help = 'What to predict?')
 parser.add_argument('--n_folds', type=int, default=1000, \
                     help = 'Specifies how many folds to test on')
 parser.add_argument('--rsa', action='store_true', default=False, \
@@ -256,6 +287,32 @@ for s in range(1, n_subjects+1):
     sub_data = {k : v for k, v in sub_data.items() if k in vectors.keys()}
     vectors = {k : vectors[k] for k, v in sub_data.items()}
     combs = list(itertools.combinations(list(vectors.keys()), 2))
+
+    ### Prepare trial info data
+    if args.target == 'continuous':
+        with open('book_fast_stimuli_ratings.tsv') as i:
+            lines = [l.strip().split('\t') for l in i.readlines()]
+        cl_con = {l[0] : float(l[4]) for l in lines[1:]}
+        combs = [[c] for c in cl_con.keys()]
+        '''
+        conc = [abs(cl_con[c[0]]-cl_con[c[1]]) for c in combs]
+        data = [1-scipy.stats.spearmanr(sub_data[c[0]], sub_data[c[1]])[0] for c in combs]
+        vecs = [1-scipy.stats.spearmanr(vectors[c[0]], vectors[c[1]])[0] for c in combs]
+        print('Correlation brain-vectors: {}'.format(scipy.stats.spearmanr(vecs, data)))
+        accuracy = scipy.stats.spearmanr(conc, data)[0]
+        '''
+
+    elif args.target == 'class':
+        cl_con = {tuple(n.replace("'", ' ').split()) : c.split('_')[1] for n, c in zip(trial_infos['stimulus'], trial_infos['category']) if 'neg' not in n}
+        cl_con = {' '.join([n[0], n[-1]]) : c for n, c in cl_con.items()}
+        '''
+        dot = {tuple(n.replace("'", ' ').split()) : c.split('_')[0] for n, c in zip(trial_infos['stimulus'], trial_infos['category']) if 'neg' not in n}
+        dot = [' '.join([n[0], n[-1]]) for n, c in dot.items() if c=='dot']
+        '''
+        combs = [c for c in combs if c[0]!=c[1]\
+                 #and (c[0] in dot and c[1] in dot)
+                 ]
+
     ### RSA decoding
     if args.rsa:
         logging.info('Computing RSA vectors...')
@@ -264,61 +321,67 @@ for s in range(1, n_subjects+1):
     accuracies = list()
     ### Splitting
     for c in tqdm(combs):
+        test_targets = [cl_con[c_i] for c_i in c]
         train_inputs = [v for k, v in sub_data.items() if k not in c]
-        train_targets = [v for k, v in vectors.items() if k not in c]
+        #train_targets = [v for k, v in vectors.items() if k not in c]
+        train_targets = [cl_con[k] for k, v in vectors.items() if k not in c]
 
         test_inputs = [sub_data[c_i] for c_i in c]
-        test_targets = [vectors[c_i] for c_i in c]
+        #test_targets = [vectors[c_i] for c_i in c]
 
-        model = Ridge(alpha=1.0)
-        model.fit(train_inputs, train_targets)
+        if args.target == 'class':
+            model = RidgeClassifier(alpha=1.0)
+            #model = SVC()
+            model.fit(train_inputs, train_targets)
+            score = model.score(test_inputs, test_targets)
+        elif args.target == 'continuous':
+            model = Ridge(alpha=1.0)
+            model.fit(train_inputs, train_targets)
+            #score = model.score(test_inputs, test_targets)
+            score = model.predict(test_inputs)
+        accuracies.append(score)
 
-        predictions = model.predict(test_inputs)
-        assert len(predictions) == len(test_targets)
-        wrong = 0.
-        for idx_one, idx_two in [(0, 1), (1, 0)]:
-            wrong += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
-        correct = 0.
-        for idx_one, idx_two in [(0, 0), (1, 1)]:
-            correct += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
-        if correct > wrong:
-            accuracies.append(1)
-        else:
-            accuracies.append(0)
-    accuracy = numpy.average(accuracies)
-    print(accuracy)
-    for c, a in zip(combs, accuracies):
-        sub_results[c].append(a)
-    ### Preparing per-category results
-    clean_results = collections.defaultdict(list)
-    for k, v in sub_results.items():
-        if k[0] not in trials.keys() or k[1] not in trials.keys():
-            print(k)
-        else:
-            if trials[k[0]] == trials[k[1]]:
-                clean_results[trials[k[0]]].extend(v)
-            else:
-                new_k = '_'.join(sorted([trials[k[0]], trials[k[1]]]))
-                clean_results[new_k].extend(v)
-            ### Abstract / concrete
-            abs_con_one = trials[k[0]].split('_')[-1]
-            abs_con_two = trials[k[1]].split('_')[-1]
-            abs_con = '_'.join(sorted(list(set([abs_con_one, abs_con_two]))))
-            clean_results[abs_con].extend(v)
-            ### First
-            abs_con_one = trials[k[0]].split('_')[0]
-            abs_con_two = trials[k[1]].split('_')[0]
-            abs_con = '_'.join(sorted(list(set([abs_con_one, abs_con_two]))))
-            clean_results[abs_con].extend(v)
-
-    for k, v in clean_results.items():
-        all_results[k].append(numpy.average(v))
+                #assert len(predictions) == len(test_targets)
+    if args.target == 'class':
+        accuracy = numpy.average(accuracies)
+    elif args.target == 'continuous':
+        original_values = list(cl_con.values())
+        accuracy = scipy.stats.spearmanr(original_values, accuracies)[0]
     decoding_results.append(accuracy)
+    print(accuracy)
+    if args.target == 'class':
+        for c, a in zip(combs, accuracies):
+            sub_results[c].append(a)
+        ### Preparing per-category results
+        clean_results = collections.defaultdict(list)
+        for k, v in sub_results.items():
+            if k[0] not in trials.keys() or k[1] not in trials.keys():
+                print(k)
+            else:
+                if trials[k[0]] == trials[k[1]]:
+                    clean_results[trials[k[0]]].extend(v)
+                else:
+                    new_k = '_'.join(sorted([trials[k[0]], trials[k[1]]]))
+                    clean_results[new_k].extend(v)
+                ### Abstract / concrete
+                abs_con_one = trials[k[0]].split('_')[-1]
+                abs_con_two = trials[k[1]].split('_')[-1]
+                abs_con = '_'.join(sorted(list(set([abs_con_one, abs_con_two]))))
+                clean_results[abs_con].extend(v)
+                ### First
+                abs_con_one = trials[k[0]].split('_')[0]
+                abs_con_two = trials[k[1]].split('_')[0]
+                abs_con = '_'.join(sorted(list(set([abs_con_one, abs_con_two]))))
+                clean_results[abs_con].extend(v)
+
+        for k, v in clean_results.items():
+            all_results[k].append(numpy.average(v))
+
 
 output_folder = os.path.join('results', args.cross_validation, 
         #'{}_{}_simple_decoding_rsa_{}_only_nouns_{}'.format(
-        '{}_{}_simple_decoding_rsa_{}_only_verbs_{}'.format(
-                             n_dims, args.vectors_folder.split('/')[1], args.rsa, args.only_nouns), \
+        '{}_{}_new_classification_rsa_{}_target_{}'.format(
+                             n_dims, args.vectors_folder.split('/')[1], args.rsa, args.target), \
                              args.dataset, args.analysis, 
                              'pairwise', 
                              args.spatial_analysis,
