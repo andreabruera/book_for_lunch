@@ -19,7 +19,7 @@ def read_vectors(args):
             numpy.random.shuffle(vecs)
             ### Limiting to 32 mentions
             vecs = vecs[:32, :]
-            if vecs.shape[0] not in [768, 300]:
+            if vecs.shape[0] not in [1024, 768, 300]:
                 vecs = numpy.nanmean(vecs, axis=0)
                 '''
                 if args.vector_averaging == 'avg':
@@ -29,7 +29,7 @@ def read_vectors(args):
                     ### Maxpool
                     vecs = numpy.array([max([v[i] for v in vecs]) for i in range(vecs.shape[-1])], dtype=numpy.float64)
                 '''
-            assert vecs.shape[0] in [768, 300]
+            assert vecs.shape[0] in [1024, 768, 300]
             vectors[f.replace('_', ' ').split('.')[0]] = vecs
 
     return vectors

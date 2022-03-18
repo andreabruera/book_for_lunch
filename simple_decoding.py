@@ -13,7 +13,7 @@ import sklearn
 from matplotlib import pyplot
 from nilearn import datasets, image, input_data, plotting
 from scipy import spatial, stats
-from sklearn import feature_selection
+from sklearn import decomposition, feature_selection
 from sklearn.linear_model import Ridge
 from sklearn.svm import SVC
 from tqdm import tqdm
@@ -51,11 +51,16 @@ def read_events(events_path):
                 cat = 'verb_concrete'
             else:
                 cat = 'verb_abstract'
-        elif 'Coercion' in cat:
+        elif 'Coer' in cat:
             if 'con' in cat:
                 cat = 'dot_concrete'
             else:
                 cat = 'dot_abstract'
+        elif 'Simple' in cat:
+            if 'con' in cat:
+                cat = 'simple_concrete'
+            else:
+                cat = 'simple_abstract'
         stimulus = events['trial_type'][t:t+jump]
         stimulus = '{} {}'.format(stimulus[verb_idx], stimulus[noun_idx])
 
@@ -127,6 +132,8 @@ parser.add_argument('--rsa', action='store_true', default=False, \
                     help = 'Specifies whether to run the RSA analysis')
 parser.add_argument('--only_nouns', action='store_true', default=False, \
                     help = 'Using as targets only the vectors for the nouns?')
+parser.add_argument('--encoding', action='store_true', default=False, \
+                    help = 'Encoding instead of decoding?')
 parser.add_argument('--vectors_folder', type=str, required=True, \
                     help = 'Specifies where the vectors are stored')
 parser.add_argument('--n_brain_features', type=int, required=True, \
@@ -255,6 +262,12 @@ for s in range(1, n_subjects+1):
 
     sub_data = {k : v for k, v in sub_data.items() if k in vectors.keys()}
     vectors = {k : vectors[k] for k, v in sub_data.items()}
+    '''
+    ### PCA reduction of word vectors
+    if args.encoding:
+        vecs = sklearn.decomposition.PCA(n_components=.7).fit_transform(list(vectors.values()))
+        vectors = {k : v for k, v in zip(vectors.keys(), vecs)}
+    '''
     combs = list(itertools.combinations(list(vectors.keys()), 2))
     ### RSA decoding
     if args.rsa:
@@ -264,27 +277,51 @@ for s in range(1, n_subjects+1):
     accuracies = list()
     ### Splitting
     for c in tqdm(combs):
-        train_inputs = [v for k, v in sub_data.items() if k not in c]
-        train_targets = [v for k, v in vectors.items() if k not in c]
+        ### Encoding
+        if args.encoding:
+            ### PCA reduction of vectors
+            train_inputs = [v for k, v in vectors.items() if k not in c]
+            train_targets = [v for k, v in sub_data.items() if k not in c]
 
-        test_inputs = [sub_data[c_i] for c_i in c]
-        test_targets = [vectors[c_i] for c_i in c]
-
-        model = Ridge(alpha=1.0)
-        model.fit(train_inputs, train_targets)
-
-        predictions = model.predict(test_inputs)
-        assert len(predictions) == len(test_targets)
-        wrong = 0.
-        for idx_one, idx_two in [(0, 1), (1, 0)]:
-            wrong += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
-        correct = 0.
-        for idx_one, idx_two in [(0, 0), (1, 1)]:
-            correct += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
-        if correct > wrong:
-            accuracies.append(1)
+            test_inputs = [vectors[c_i] for c_i in c]
+            test_targets = [sub_data[c_i] for c_i in c]
+        ### Decoding
         else:
-            accuracies.append(0)
+            train_inputs = [v for k, v in sub_data.items() if k not in c]
+            train_targets = [v for k, v in vectors.items() if k not in c]
+
+            test_inputs = [sub_data[c_i] for c_i in c]
+            test_targets = [vectors[c_i] for c_i in c]
+
+        ### RSA
+        if args.rsa:
+            wrong = 0.
+            for idx_one, idx_two in [(0, 1), (1, 0)]:
+                wrong += scipy.stats.spearmanr(test_inputs[idx_one], test_targets[idx_two])[0]
+            correct = 0.
+            for idx_one, idx_two in [(0, 0), (1, 1)]:
+                correct += scipy.stats.spearmanr(test_inputs[idx_one], test_targets[idx_two])[0]
+            if correct > wrong:
+                accuracies.append(1)
+            else:
+                accuracies.append(0)
+        ### Ridge
+        else:
+            model = Ridge(alpha=1.0)
+            model.fit(train_inputs, train_targets)
+
+            predictions = model.predict(test_inputs)
+            assert len(predictions) == len(test_targets)
+            wrong = 0.
+            for idx_one, idx_two in [(0, 1), (1, 0)]:
+                wrong += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
+            correct = 0.
+            for idx_one, idx_two in [(0, 0), (1, 1)]:
+                correct += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
+            if correct > wrong:
+                accuracies.append(1)
+            else:
+                accuracies.append(0)
     accuracy = numpy.average(accuracies)
     print(accuracy)
     for c, a in zip(combs, accuracies):
@@ -324,6 +361,7 @@ output_folder = os.path.join('results', args.cross_validation,
                              args.spatial_analysis,
                              args.feature_selection, args.vector_averaging,
                              )
+output_folder = output_folder.replace('decoding', 'encoding')
 os.makedirs(output_folder, exist_ok=True)
 with open(os.path.join(output_folder, 'accuracies.results'), 'w') as o:
     o.write('overall_accuracy\t')

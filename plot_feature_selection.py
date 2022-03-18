@@ -3,8 +3,9 @@ import nilearn
 import numpy
 import os
 
-from nilearn import datasets, image, plotting
-
+from nilearn import datasets, image, plotting, surface
+### Surface
+fsaverage = datasets.fetch_surf_fsaverage()
 beg = 4
 end = 11
 
@@ -94,4 +95,38 @@ maps = nilearn.image.resample_to_img(maps, map_nifti, interpolation='linear')
 for idx, val in zip(maps.get_fdata().flatten(), plot_img.get_fdata().flatten()):
     collector[labels[int(idx)]] += 1
 
-
+### Right
+texture = surface.vol_to_surf(plot_img, fsaverage.pial_right)
+r = plotting.plot_surf_stat_map(
+            fsaverage.pial_right, texture, hemi='right',
+            title='Surface right hemisphere', colorbar=True,
+            threshold=.95, 
+            bg_map=fsaverage.sulc_right,
+            darkness=0.6,
+            cmap='BuPu',
+            #view='medial',
+            alpha=0.4,
+            dpi=600,
+            #cmap='Spectral_R'
+            )
+r.savefig(os.path.join(out, \
+            'surface_right_{}_{}.jpg'.format(args.spatial_analysis, n_dims)),
+            dpi=600)
+### Left
+texture = surface.vol_to_surf(plot_img, fsaverage.pial_left)
+l = plotting.plot_surf_stat_map(
+            fsaverage.pial_left, texture, hemi='left',
+            title='Surface left hemisphere', colorbar=True,
+            threshold=.95, 
+            bg_map=fsaverage.sulc_left,
+            #cmap='Spectral_R', 
+            #cmap='Wistia',
+            cmap='BuPu',
+            #view='medial',
+            darkness=0.6,
+            alpha=0.4,
+            dpi=600,
+            )
+l.savefig(os.path.join(out, \
+            'surface_left_{}_{}.jpg'.format(args.spatial_analysis, n_dims)),
+            dpi=600)

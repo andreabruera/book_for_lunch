@@ -11,7 +11,8 @@ from scipy import stats
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--target', choices=['concreteness', 'familiarity', 'word_vectors'],
+parser.add_argument('--target', choices=['concreteness', 'familiarity', 
+                    'frequency', 'word_vectors', 'imageability'],
                     required=True, help='What model to consider?')
 parser.add_argument('--data_split', choices=['all', 'dot', 
                     'verb', 'simple'], required=True, \
@@ -146,7 +147,7 @@ for k, subs in search_results.items():
                                                        threshold=dict(start=0, step=0.2),
                                                        adjacency=adj_matrix, n_jobs=48)
     current_brain = empty_brain.copy()
-    current_brain[bool_mask] = ps
+    current_brain[bool_mask] = 1-ps
     sig_places = list()
     print([k, numpy.amin(ps)])
     '''

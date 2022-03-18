@@ -134,7 +134,7 @@ parser.add_argument('--dataset', required=True, choices=['book_fast','lunch_fast
                                                          'book_slow', 'lunch_slow'],
                     help='Specify which dataset to use')
 parser.add_argument('--target', choices=['familiarity', 'concreteness', 
-                    'imageability', 'word_vectors'], required=True, \
+                    'imageability', 'frequency', 'word_vectors'], required=True, \
                     help = 'Which model to look for?')
 parser.add_argument('--data_split', choices=['all', 'dot', 
                     'verb', 'simple'], required=True, \
@@ -212,6 +212,13 @@ for s in range(1, n_subjects+1):
         model_data = {l[0] : float(l[2]) for l in lines[1:]}
     elif args.target == 'imageability':
         model_data = {l[0] : float(l[6]) for l in lines[1:]}
+    elif args.target == 'frequency':
+        model_data = dict()
+        for l in lines[1:]:
+            with open(os.path.join('resources', 'book_for_lunch_sentences',
+                '{}.vector'.format(l[0].replace(' ', '_')))) as i:
+                length = len(list(i.readlines()))
+            model_data[l[0]] = numpy.log(length)
     elif args.target == 'word_vectors':
         vectors_keys = {tuple(k.replace("_", ' ').split()) : k  for k in vectors.keys()}
         vectors_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in vectors_keys.items()}
@@ -224,7 +231,7 @@ for s in range(1, n_subjects+1):
     model_data = {s : model_data[s] for s in stimuli}
     sub_data = {k : v for k, v in sub_data.items() if k in model_data.keys()}
     combs = list(itertools.combinations(list(sub_data.keys()), 2))
-    if args.target in ['concreteness', 'familiarity', 'imageability']:
+    if args.target in ['concreteness', 'familiarity', 'imageability', 'frequency']:
         model_sims = [abs(model_data[c[0]]-model_data[c[1]]) for c in combs]
     elif args.target == 'word_vectors':
         model_sims = [scipy.stats.spearmanr(vectors[c[0]], vectors[c[1]])[0] for c in combs]
