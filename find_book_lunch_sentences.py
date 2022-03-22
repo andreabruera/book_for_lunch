@@ -1,8 +1,11 @@
+import logging
 import os
-import resources.lemmatize_italian_data.pymorphit_cls
+from resources.lemmatize_italian_data import pymorphit_cls
 import re
 
 from tqdm import tqdm
+
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
 book_f = '/import/cogsci/andrea/dataset/neuroscience/dot_book_fast_bids/derivatives/sub-01/ses-mri/func/sub-01_ses-mri_task-dotbookfast_run-01_events.tsv'
 lunch_f = '/import/cogsci/andrea/dataset/neuroscience/dot_lunch_fast_bids/derivatives/sub-01/ses-mri/func/sub-01_ses-mri_task-dotlunchfast_run-01_events.tsv'
@@ -31,82 +34,11 @@ for events_path in [book_f, lunch_f]:
         stimulus = '{} {}'.format(stimulus[verb_idx], stimulus[noun_idx])
         stimuli.append(stimulus)
 
+
 sentences = {tuple(k.replace("'", ' ').split(' ')) : k for k in stimuli}
-sentences = {(k[0], k[-1]) if len(k)==3 else k : ['[SEP] {} [SEP]'.format(v)] for k, v in sentences.items()}
-del sentences[('neg', 'neg')]
-print('Itwac')
+sentences = {k[i] : ['[SEP] {} [SEP]'.format(k[i])] for k, v in sentences.items() for i in [0, -1]}
+#sentences = {k : 0 for k in sentences.keys()}
 
-### ItWac sentences
-counter = 0
-folders = ['/import/cogsci/andrea/dataset/corpora/itwac'] 
-with tqdm() as pbar:
-    for folder in folders:
-        for root, direc, filez in os.walk(folder):
-            for f in filez:
-                f_sentences = list()
-                f_lemmas = list()
-
-                sentence = list()
-                lemma = list()
-                #with open(os.path.join(root, f), errors='ignore') as i:
-                with open(os.path.join(root, f), encoding='latin-1') as i:
-                    for l in i.readlines():
-                        l = l.encode('utf-8').decode().strip()
-                        if l == '<s>':
-                            pass
-                        elif l == '</s>':
-                            f_sentences.append(sentence)
-                            sentence = list()
-                            f_lemmas.append(lemma)
-                            lemma = list()
-                        elif '<' not in l:
-                            l = l.split('\t')
-                            lemma.append(l[-1])
-                            sentence.append(l[0])
-
-                ### Making sentences shorter
-                short_sentences = list()
-                short_lemmas = list()
-                for split_s, split_lem in zip(f_sentences, f_lemmas):
-                    if len(split_s) < 128:
-                        short_sentences.append(split_s)
-                        short_lemmas.append(split_lem)
-                    else:
-                        sent = list()
-                        sent_lem = list()
-                        for t, l_t in zip(split_s, split_lem):
-                            sent.append(t)
-                            sent_lem.append(l_t)
-                            if '.' in t or ';' in t:
-                                if len(sent) > 128:
-                                    short_sentences.append(sent)
-                                    short_lemmas.append(sent_lem)
-                                    sent = list()
-                                    sent_lem = list()
-                        short_sentences.append(sent)
-                        short_lemmas.append(sent_lem)
-
-                for lemmaed, l in zip(short_lemmas, short_sentences):
-                    assert isinstance(lemmaed, list)
-                    assert isinstance(l, list)
-                    #for lemmaed, l in zip(f_lemmas, f_sentences):
-                    for one, two in sentences.keys():
-                        indices_one = [i for i, t in enumerate(lemmaed) if t==one]
-                        indices_two = [i for i, t in enumerate(lemmaed) if t==two]
-                        if len(indices_one)>1 and len(indices_two)>1:
-                            for idx_one in indices_one:
-                                for idx_two in indices_two:
-                                    if idx_two-idx_one in [1, 2, 3]:
-                                        try:
-                                            l[idx_one] = '[SEP] {}'.format(l[idx_one])
-                                            l[idx_two] = '{} [SEP]'.format(l[idx_two])
-                                        except TypeError:
-                                            pass
-                            l = ' '.join(l)
-                            if '[SEP]' in l:
-                                print(l)
-                                sentences[(one, two)].append(l)
-                                pbar.update(1)
 
 print('other')
 lemmatizer = pymorphit_cls.PyMorphITCLS()
@@ -146,34 +78,123 @@ with tqdm() as pbar:
                                             sent_lem = list()
                                 short_sentences.append(sent)
                                 short_lemmas.append(sent_lem)
+                            for lemmaed, line in zip(short_lemmas, short_sentences):
 
-                            for l, lemmaed in zip(short_sentences, short_lemmas):
                                 assert isinstance(lemmaed, list)
-                                assert isinstance(l, list)
-                                for one, two in sentences.keys():
-                                    indices_one = [i for i, t in enumerate(lemmaed) if t==one]
-                                    indices_two = [i for i, t in enumerate(lemmaed) if t==two]
-                                    if len(indices_one)>1 and len(indices_two)>1:
-                                        for idx_one in indices_one:
-                                            for idx_two in indices_two:
-                                                if idx_two-idx_one in [1, 2, 3]:
-                                                    try:
-                                                        l[idx_one] = '[SEP] {}'.format(l[idx_one])
-                                                        l[idx_two] = '{} [SEP]'.format(l[idx_two])
-                                                    except TypeError:
-                                                        pass
-                                        l = ' '.join(l)
-                                        if '[SEP]' in l:
-                                            print(l)
-                                            sentences[(one, two)].append(l)
-                                            pbar.update(1)
+                                assert isinstance(line, list)
+                                for one in sentences.keys():
+                                    #indices_one = [i for i, t in enumerate(lemmaed) if t==one]
+                                    indices_one = [i for i, t in enumerate(line) if t==one]
+                                    l = line.copy()
+                                    for idx_one in indices_one:
+                                        try:
+                                            l[idx_one] = '[SEP] {} [SEP]'.format(l[idx_one])
+                                        except TypeError:
+                                            pass
+                                    l = ' '.join(l)
+                                    if '[SEP]' in l:
+                                        #with open(os.path.join(out, '{}.vector'.format(one)), 'a') as o:
+                                        #    sent = l.replace('\n', ' ')
+                                        #    o.write('{}\n'.format(sent))
+                                        sentences[one].append(l)
+                                        #sentences[one] += 1
+                                        pbar.update(1)
 
-
-
-out = 'book_for_lunch_sentences'
+print('Itwac')
+out = os.path.join('resources', 'single_words_sentences')
 os.makedirs(out, exist_ok=True)
+'''
 for k, v in sentences.items():
-    with open(os.path.join(out, '{}.vector'.format('_'.join(k))), 'w') as o:
+    with open(os.path.join(out, '{}.vector'.format(k)), 'w') as o:
+        o.write('{}\n'.format(v))
+'''
+
+### ItWac sentences
+counter = 0
+folders = ['/import/cogsci/andrea/dataset/corpora/itwac'] 
+with tqdm() as pbar:
+    for folder in folders:
+        for root, direc, filez in os.walk(folder):
+            for f in filez:
+                f_sentences = list()
+                f_lemmas = list()
+                ### Reading sentencees
+                logging.info('Now loading sentences from {}'.format(f))
+                sentence = list()
+                lemma = list()
+                #with open(os.path.join(root, f), errors='ignore') as i:
+                with open(os.path.join(root, f), encoding='latin-1') as i:
+                    for l in i.readlines():
+                        l = l.encode('utf-8').decode().strip()
+                        if l == '<s>':
+                            pass
+                        elif l == '</s>':
+                            f_sentences.append(sentence)
+                            sentence = list()
+                            f_lemmas.append(lemma)
+                            lemma = list()
+                        elif '<' not in l:
+                            l = l.split('\t')
+                            lemma.append(l[-1])
+                            sentence.append(l[0])
+
+                logging.info('Now shortening sentences from {}'.format(f))
+                ### Making sentences shorter
+                short_sentences = list()
+                short_lemmas = list()
+                for split_s, split_lem in zip(f_sentences, f_lemmas):
+                    if len(split_s) < 128:
+                        short_sentences.append(split_s)
+                        short_lemmas.append(split_lem)
+                    else:
+                        sent = list()
+                        sent_lem = list()
+                        for t, l_t in zip(split_s, split_lem):
+                            sent.append(t)
+                            sent_lem.append(l_t)
+                            if '.' in t or ';' in t:
+                                if len(sent) > 128:
+                                    short_sentences.append(sent)
+                                    short_lemmas.append(sent_lem)
+                                    sent = list()
+                                    sent_lem = list()
+                        short_sentences.append(sent)
+                        short_lemmas.append(sent_lem)
+                        #pbar.update(1)
+                del f_sentences
+                del f_lemmas
+                logging.info('Now shortening sentences from {}'.format(f))
+
+                for lemmaed, line in zip(short_lemmas, short_sentences):
+                    assert isinstance(lemmaed, list)
+                    assert isinstance(line, list)
+                    for one in sentences.keys():
+                        #indices_one = [i for i, t in enumerate(lemmaed) if t==one]
+                        indices_one = [i for i, t in enumerate(line) if t==one]
+                        l = line.copy()
+                        for idx_one in indices_one:
+                            try:
+                                l[idx_one] = '[SEP] {} [SEP]'.format(l[idx_one])
+                            except TypeError:
+                                pass
+                        l = ' '.join(l)
+                        if '[SEP]' in l:
+                            #print(l)
+                            #with open(os.path.join(out, '{}.vector'.format(one)), 'a') as o:
+                            #    sent = l.replace('\n', ' ')
+                            #    o.write('{}\n'.format(sent))
+                            sentences[one].append(l)
+                            #sentences[one] += 1
+                            pbar.update(1)
+
+
+'''
+with open(os.path.join(out, 'words.counter'), 'w') as o:
+    for k, v in sentences.items():
+        o.write('{}\t{}\n'.format(k, v))
+'''
+for k, v in sentences.items():
+    with open(os.path.join(out, '{}.vector'.format(k)), 'w') as o:
         for sent in v:
             sent = sent.replace('\n', ' ')
             o.write('{}\n'.format(sent))

@@ -1,4 +1,5 @@
 import argparse
+import random
 import numpy
 import os
 import re
@@ -44,6 +45,7 @@ else:
 entity_vectors = dict()
 
 sentences_folder = os.path.join('resources', 'book_for_lunch_sentences')
+sentences_folder = os.path.join('resources', 'single_words_sentences')
 
 with tqdm() as pbar:
     for f in os.listdir(sentences_folder):
@@ -51,93 +53,94 @@ with tqdm() as pbar:
         entity_vectors[stimulus] = list()
         with open(os.path.join(sentences_folder, f)) as i:
             #print(f)
-            for l in i:
-                l = l.strip()
-                inputs = tokenizer(l, return_tensors="pt")
+            lines = [l.strip() for l in i]
+        #lines = random.sample(lines, k=min(len(lines), 100000))
+        lines = random.sample(lines, k=min(len(lines), 32))
+        for l in lines:
 
-                if mode == 'span':
-                    spans = [i_i for i_i, i in enumerate(inputs['input_ids'].numpy().reshape(-1)) if 
-                            i==tokenizer.convert_tokens_to_ids(['[SEP]'])[0]]
-                    if 'bert' in model_name and len(spans)%2==1:
-                        spans = spans[:-1]
-                        #i==102
-                        #i == 103 
-                        #or 
-                        #or 
-                        #i==30000
-                            
-                    if len(spans) > 1:
-                        try:
-                            assert len(spans) % 2 == 0
-                        except AssertionError:
-                            print(l)
-                            continue
-                        l = re.sub(r'\[SEP\]', '', l)
-                        ### Correcting spans
-                        correction = list(range(len(spans)))
-                        spans = [s-c for s,c in zip(spans, correction)]
-                        split_spans = list()
-                        for i in list(range(len(spans)))[::2]:
-                            current_span = (spans[i], spans[i+1])
-                            split_spans.append(current_span)
+            inputs = tokenizer(l, return_tensors="pt")
 
-                        max_len = 512 if 'bert' in model_name else 1024
-                        if len(tokenizer.tokenize(l)) > max_len:
-                            continue
-                        #outputs = model(**inputs, output_attentions=False, \
-                        #                output_hidden_states=True, return_dict=True)
-                        try:
-                            inputs = tokenizer(l, return_tensors="pt").to('cuda:1')
-                        except RuntimeError:
-                            import pdb; pdb.set_trace()
-                            continue
-                        try:
-                            outputs = model(**inputs, output_attentions=False, \
-                                            output_hidden_states=True, return_dict=True)
-                        except IndexError:
-                            import pdb; pdb.set_trace()
-                            print(l)
-                            continue
+            if mode == 'span':
+                spans = [i_i for i_i, i in enumerate(inputs['input_ids'].numpy().reshape(-1)) if 
+                        i==tokenizer.convert_tokens_to_ids(['[SEP]'])[0]]
+                if 'bert' in model_name and len(spans)%2==1:
+                    spans = spans[:-1]
+                    #i==102
+                    #i == 103 
+                    #or 
+                    #or 
+                    #i==30000
+                        
+                if len(spans) > 1:
+                    try:
+                        assert len(spans) % 2 == 0
+                    except AssertionError:
+                        print(l)
+                        continue
+                    l = re.sub(r'\[SEP\]', '', l)
+                    ### Correcting spans
+                    correction = list(range(len(spans)))
+                    spans = [s-c for s,c in zip(spans, correction)]
+                    split_spans = list()
+                    for i in list(range(len(spans)))[::2]:
+                        current_span = (spans[i], spans[i+1])
+                        split_spans.append(current_span)
 
-                        hidden_states = numpy.array([s[0].cpu().detach().numpy() for s in outputs['hidden_states']])
-                        #last_hidden_states = numpy.array([k.detach().numpy() for k in outputs['hidden_states']])[2:6, 0, :]
-                        for beg, end in split_spans:
-                            mention = hidden_states[:, beg:end, :]
-                            mention = numpy.average(mention, axis=1)
-                            if args.layer == 'middle_four':
-                                layer_start = -8
-                                layer_end = -4
-                            if args.layer == 'top_four':
-                                layer_start = -4
-                                layer_end = mention.shape[0]
-                            mention = mention[layer_start:layer_end, :]
+                    max_len = 512 if 'bert' in model_name else 1024
+                    if len(tokenizer.tokenize(l)) > max_len:
+                        continue
+                    #outputs = model(**inputs, output_attentions=False, \
+                    #                output_hidden_states=True, return_dict=True)
+                    try:
+                        inputs = tokenizer(l, return_tensors="pt").to('cuda:1')
+                    except RuntimeError:
+                        continue
+                    try:
+                        outputs = model(**inputs, output_attentions=False, \
+                                        output_hidden_states=True, return_dict=True)
+                    except RuntimeError:
+                        print(l)
+                        continue
 
-                            mention = numpy.average(mention, axis=0)
-                            assert mention.shape == required_shape
-                            entity_vectors[stimulus].append(mention)
-                        pbar.update(1)
+                    hidden_states = numpy.array([s[0].cpu().detach().numpy() for s in outputs['hidden_states']])
+                    #last_hidden_states = numpy.array([k.detach().numpy() for k in outputs['hidden_states']])[2:6, 0, :]
+                    for beg, end in split_spans:
+                        mention = hidden_states[:, beg:end, :]
+                        mention = numpy.average(mention, axis=1)
+                        if args.layer == 'middle_four':
+                            layer_start = -8
+                            layer_end = -4
+                        if args.layer == 'top_four':
+                            layer_start = -4
+                            layer_end = mention.shape[0]
+                        mention = mention[layer_start:layer_end, :]
 
-                if mode == 'cls':
-                    outputs = model(**inputs, output_attentions=False, output_hidden_states=True, return_dict=True)
-
-                    last_hidden_states = numpy.array([k.cpu().detach().numpy() for k in outputs['hidden_states']])[-4:, 0, 0, :]
-                    mention = numpy.average(hidden_states, axis=0)
-                    assert mention.shape == required_shape
-                    entity_vectors[stimulus].append(mention)
+                        mention = numpy.average(mention, axis=0)
+                        assert mention.shape == required_shape
+                        entity_vectors[stimulus].append(mention)
                     pbar.update(1)
 
-                if mode == 'average':
-                    outputs = model(**inputs, output_attentions=False, \
-                                    output_hidden_states=True, return_dict=True)
+            if mode == 'cls':
+                outputs = model(**inputs, output_attentions=False, output_hidden_states=True, return_dict=True)
 
-                    last_hidden_states = numpy.array([k.cpu().detach().numpy() for k in outputs['hidden_states']])[-4:, 0, 1:]
-                    mention = numpy.average(last_hidden_states, axis=1)
-                    mention = numpy.average(mention, axis=0)
-                    assert mention.shape == required_shape
-                    entity_vectors[stimulus].append(mention)
-                    pbar.update(1)
+                last_hidden_states = numpy.array([k.cpu().detach().numpy() for k in outputs['hidden_states']])[-4:, 0, 0, :]
+                mention = numpy.average(hidden_states, axis=0)
+                assert mention.shape == required_shape
+                entity_vectors[stimulus].append(mention)
+                pbar.update(1)
 
-out_folder = os.path.join('resources', '{}_{}_big'.format(args.model, args.layer))
+            if mode == 'average':
+                outputs = model(**inputs, output_attentions=False, \
+                                output_hidden_states=True, return_dict=True)
+
+                last_hidden_states = numpy.array([k.cpu().detach().numpy() for k in outputs['hidden_states']])[-4:, 0, 1:]
+                mention = numpy.average(last_hidden_states, axis=1)
+                mention = numpy.average(mention, axis=0)
+                assert mention.shape == required_shape
+                entity_vectors[stimulus].append(mention)
+                pbar.update(1)
+
+out_folder = os.path.join('resources', '{}_{}_single_words'.format(args.model, args.layer))
 os.makedirs(out_folder, exist_ok=True)
 for k, v in entity_vectors.items():
     with open(os.path.join(out_folder, '{}.vector'.format(k)), 'w') as o:

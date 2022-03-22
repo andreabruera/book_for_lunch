@@ -89,11 +89,30 @@ display.savefig(output_file)
 
 dataset = nilearn.datasets.fetch_atlas_harvard_oxford('cort-maxprob-thr25-1mm')
 maps = dataset['maps']
+maps_data = maps.get_fdata()
 labels = dataset['labels']
-collector = {l : 0. for l in labels}
-maps = nilearn.image.resample_to_img(maps, map_nifti, interpolation='linear')
-for idx, val in zip(maps.get_fdata().flatten(), plot_img.get_fdata().flatten()):
-    collector[labels[int(idx)]] += 1
+collector = {l : numpy.array([], dtype=numpy.float64) for l in labels}
+#maps = nilearn.image.resample_to_img(map_nifti, maps, interpolation='nearest')
+interpr_nifti = nilearn.image.resample_to_img(plot_img, maps, interpolation='nearest')
+for l_i, label in enumerate(labels):
+    if l_i > 0:
+        msk = maps_data == l_i
+        '''
+        for index in indices:
+            region_map = numpy.logical_or(region_map, \
+                                      maps_data==index)
+        region_map = numpy.where(region_map==True, 1, 0)
+        '''
+        mskd = nilearn.masking.apply_mask(interpr_nifti, nilearn.image.new_img_like(maps, msk))
+        collector[label] = mskd[mskd>0.]
+collector = sorted({k : v.shape[0]/16 for k, v in collector.items()}.items(), key=lambda items : items[1],
+                    reverse=True)
+total = sum(list([k[1] for k in collector]))
+percentages = {k[0] : k[1]/total if k[1] != 0. else 0. for k in collector}
+output_perc = os.path.join(out, '{}_{}.txt'.format(args.spatial_analysis, n_dims))
+with open(output_perc, 'w') as o:
+    for k, v in percentages.items():
+        o.write('{}\t{}%\n'.format(k, round(v*100, 2)))
 
 ### Right
 texture = surface.vol_to_surf(plot_img, fsaverage.pial_right)

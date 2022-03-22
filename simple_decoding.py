@@ -134,6 +134,8 @@ parser.add_argument('--only_nouns', action='store_true', default=False, \
                     help = 'Using as targets only the vectors for the nouns?')
 parser.add_argument('--encoding', action='store_true', default=False, \
                     help = 'Encoding instead of decoding?')
+parser.add_argument('--ceiling', action='store_true', default=False, \
+                    help = 'Ceiling instead of word vectors?')
 parser.add_argument('--vectors_folder', type=str, required=True, \
                     help = 'Specifies where the vectors are stored')
 parser.add_argument('--n_brain_features', type=int, required=True, \
@@ -156,11 +158,51 @@ assert os.path.exists(maps_folder)
 map_names = [n for n in os.listdir(maps_folder)]
 map_results = dict()
 
+
+
 vectors = read_vectors(args)
+
+### Ceiling
+if args.ceiling:
+    ceiling_data = dict()
+    for s in range(1, n_subjects+1):
+    #for s in range(1, 3):
+        #print(s)
+        ### Loading the image
+        sub_path = os.path.join(dataset_path, 'sub-{:02}'.format(s), 'ses-mri', \
+                                 'func',
+                                 )
+        n_runs = len([k for k in os.listdir(sub_path) if 'nii' in k])
+
+        logging.info('Now loading data for subject {}'.format(s))
+        runs = list()
+
+        for r in tqdm(range(1, n_runs+1)):
+            #print(r)   
+            ### Reading events
+            events_path = os.path.join(sub_path, 'sub-{:02}_ses-mri_task-dot{}_run-{:02}_events.tsv'.format(s, args.dataset.replace('_', ''), r))
+
+            trial_infos = read_events(events_path)
+
+            ### Reading fMRI run
+            file_path = os.path.join(sub_path, 'sub-{:02}_ses-mri_task-dot{}_run-{:02}_bold.nii'.format(s, args.dataset.replace('_', ''), r))
+
+            single_run = nilearn.image.load_img(file_path)
+            ### Cleaning run file: detrending and standardizing
+            single_run = nilearn.image.clean_img(single_run)
+            runs.append((single_run, trial_infos))
+
+        full_sub_data, beg, end = load_subject_runs(runs, None)
+        ### Averaging, keeping only one response per stimulus
+        sub_data = {k : numpy.average(v, axis=0) for k, v in full_sub_data.items()}
+        ceiling_data[s] = sub_data
+
+
 decoding_results = list()
 
 all_results = collections.defaultdict(list)
 trials = dict()
+
 for s in range(1, n_subjects+1):
 #for s in range(1, 3):
     #print(s)
@@ -237,6 +279,14 @@ for s in range(1, n_subjects+1):
     vectors_keys = {tuple(k.replace("_", ' ').split()) : k  for k in vectors.keys()}
     vectors_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in vectors_keys.items()}
     vectors = {k : vectors[v] for k, v in vectors_keys.items()}
+    ### Ceiling
+    if args.ceiling:
+        current_ceiling = {k : [ceiling_data[sub][k] for sub in range(1, len(ceiling_data.keys())+1) if sub!=s] for k in ceiling_data[s].keys()}
+        current_ceiling = {k : numpy.average(v, axis=0) for k, v in current_ceiling.items()}
+        current_ceiling = {k : v[selected_dims] for k, v in current_ceiling.items()}
+        ceiling_keys = {tuple(k.replace("'", ' ').split()) : k  for k in current_ceiling.keys()}
+        ceiling_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in ceiling_keys.items()}
+        current_ceiling = {k : current_ceiling[v] for k, v in ceiling_keys.items()}
     ### Limiting
     ### Taking away 'unclear' samples
     '''
@@ -262,6 +312,8 @@ for s in range(1, n_subjects+1):
 
     sub_data = {k : v for k, v in sub_data.items() if k in vectors.keys()}
     vectors = {k : vectors[k] for k, v in sub_data.items()}
+    if args.ceiling:
+        current_ceiling = {k : v for k, v in current_ceiling.items() if k in vectors.keys()}
     '''
     ### PCA reduction of word vectors
     if args.encoding:
@@ -287,11 +339,18 @@ for s in range(1, n_subjects+1):
             test_targets = [sub_data[c_i] for c_i in c]
         ### Decoding
         else:
-            train_inputs = [v for k, v in sub_data.items() if k not in c]
-            train_targets = [v for k, v in vectors.items() if k not in c]
+            if args.ceiling:
+                train_inputs = [v for k, v in sub_data.items() if k not in c]
+                train_targets = [v for k, v in current_ceiling.items() if k not in c]
 
-            test_inputs = [sub_data[c_i] for c_i in c]
-            test_targets = [vectors[c_i] for c_i in c]
+                test_inputs = [sub_data[c_i] for c_i in c]
+                test_targets = [current_ceiling[c_i] for c_i in c]
+            else:
+                train_inputs = [v for k, v in sub_data.items() if k not in c]
+                train_targets = [v for k, v in vectors.items() if k not in c]
+
+                test_inputs = [sub_data[c_i] for c_i in c]
+                test_targets = [vectors[c_i] for c_i in c]
 
         ### RSA
         if args.rsa:
@@ -361,7 +420,10 @@ output_folder = os.path.join('results', args.cross_validation,
                              args.spatial_analysis,
                              args.feature_selection, args.vector_averaging,
                              )
-output_folder = output_folder.replace('decoding', 'encoding')
+if args.ceiling:
+    output_folder = output_folder.replace('simple_decoding', 'ceiling_decoding')
+if args.encoding:
+    output_folder = output_folder.replace('decoding', 'encoding')
 os.makedirs(output_folder, exist_ok=True)
 with open(os.path.join(output_folder, 'accuracies.results'), 'w') as o:
     o.write('overall_accuracy\t')
