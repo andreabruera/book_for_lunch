@@ -6,17 +6,41 @@ import nilearn
 import numpy
 import logging
 import os
+import pandas
 import random
 import scipy
 import sklearn
 
 from matplotlib import pyplot
 from nilearn import datasets, image, input_data, plotting
+from nilearn.glm.first_level import FirstLevelModel
 from scipy import stats
 from sklearn import feature_selection
 from sklearn.linear_model import Ridge
 from sklearn.svm import SVC
 from tqdm import tqdm
+
+def stability(all_args):
+    current_data = all_args[0]
+    dimensionality = all_args[1]
+    subject = all_args[2]
+    sub_values = numpy.zeros(dimensionality)
+    for sub in current_data:
+        values = numpy.zeros(dimensionality)
+        for idx in tqdm(range(dimensionality)):
+            dim_recs = [[trial[idx] for trial in stim_data] for stim, stim_data in sub.items()]
+            dim_recs = numpy.array(dim_recs)
+            combs = itertools.combinations(range(dim_recs.shape[-1]), 2)
+            idx_list = list()
+            for c in combs:
+                stab = scipy.stats.spearmanr(dim_recs[:, c[0]], dim_recs[:, c[1]])[0]
+                idx_list.append(stab)
+            stab = numpy.average(idx_list)
+            if numpy.isnan(stab):
+                stab = 0.0
+            values[idx] = stab
+        sub_values += values
+    return [subject, sub_values]
 
 def fisher(all_args):
     current_data = all_args[0]
@@ -72,15 +96,17 @@ def read_events(events_path):
         if t!=trial_starts[-1]:
             assert trial_starts[t_i+1]-t > 9
             assert trial_starts[t_i+1]-t < 13
-    trial_infos = {'start' : list(), 'stimulus' : list(), 'category' : list()}
+    trial_infos = {'onset' : list(), 'duration' : list(), 
+                   'trial_type' : list(), 'category' : list()}
     for t_i, t in enumerate(list(range(len(events['onset'])))[1:][::jump]):
         cat = events['value'][t:t+jump][verb_idx]
         stimulus = events['trial_type'][t:t+jump]
         stimulus = '{} {}'.format(stimulus[verb_idx], stimulus[noun_idx])
 
-        trial_infos['start'].append(trial_starts[t_i])
+        trial_infos['onset'].append(trial_starts[t_i])
+        trial_infos['duration'].append(1.)
         trial_infos['category'].append(cat)
-        trial_infos['stimulus'].append(stimulus)
+        trial_infos['trial_type'].append(stimulus)
     return trial_infos
 
 def load_subject_runs(runs, map_nifti=None):
@@ -95,8 +121,8 @@ def load_subject_runs(runs, map_nifti=None):
             #masked_run = masked_run.reshape(numpy.product(masked_run.shape[:3]), -1)
         masked_run = nilearn.masking.apply_mask(run, map_nifti).T
 
-        for t_i, t in enumerate(infos['start']):
-            stimulus = infos['stimulus'][t_i]
+        for t_i, t in enumerate(infos['onset']):
+            stimulus = infos['trial_type'][t_i]
 
             if args.analysis == 'time_resolved':
                 fmri_timeseries = masked_run[:, t:t+18]
@@ -134,6 +160,10 @@ parser.add_argument('--analysis', required=True, \
                          'time point by time point?')
 parser.add_argument('--spatial_analysis', choices=['ROI', 'all', 'language_areas'], required=True, \
                     help = 'Specifies how features are to be selected')
+parser.add_argument('--method', choices=['stability', 'fisher'], required=True, \
+                    help = 'Which method to use?')
+parser.add_argument('--glm', action='store_true', default=False, \
+                    help = 'Computing GLM before?')
 
 args = parser.parse_args()
 
@@ -152,6 +182,7 @@ maps_folder = os.path.join('region_maps', 'maps')
 assert os.path.exists(maps_folder)
 
 for s in range(1, n_subjects+1):
+#for s in range(1, 4+1):
     #print(s)
     ### Loading the image
     sub_path = os.path.join(dataset_path, 'sub-{:02}'.format(s), 
@@ -195,11 +226,14 @@ subjects = list(range(len(overall_sub_data)))
 
 all_args = [[[overall_sub_data[s] for s in subjects if s!=curr], dimensionality, curr+1] for curr in subjects]
 with multiprocessing.Pool() as mp:
-    results = mp.map(fisher, all_args)
+    if args.method == 'fisher':
+        results = mp.map(fisher, all_args)
+    elif args.method == 'stability':
+        results = mp.map(stability, all_args)
     mp.terminate()
     mp.join()
 
-output_folder = os.path.join('voxel_selection', 'fisher_scores', 
+output_folder = os.path.join('voxel_selection', '{}_scores'.format(args.method), 
                              '{}_to_{}'.format(beg, end),
                              args.dataset, args.analysis,
                              args.spatial_analysis,
@@ -207,6 +241,6 @@ output_folder = os.path.join('voxel_selection', 'fisher_scores',
 os.makedirs(output_folder, exist_ok=True)
 
 for s in results:
-    with open(os.path.join(output_folder, 'sub-{:02}.fisher'.format(s[0])), 'w') as o:
+    with open(os.path.join(output_folder, 'sub-{:02}.{}'.format(s[0], args.method)), 'w') as o:
         for v in s[1]: 
             o.write('{}\t'.format(float(v)))

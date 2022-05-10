@@ -141,6 +141,10 @@ parser.add_argument('--data_split', choices=['all', 'dot',
                     help = 'Which data split to use?')
 parser.add_argument('--vectors_folder', type=str, required=True, \
                     help = 'Specifies where the vectors are stored')
+parser.add_argument('--senses', action='store_true', default=False, \
+                    help = 'Averaging different senses together?')
+parser.add_argument('--ceiling', action='store_true', default=False, \
+                    help = 'Ceiling instead of word vectors?')
 args = parser.parse_args()
 
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
@@ -159,6 +163,8 @@ template = nilearn.datasets.load_mni152_template()
 vectors = read_vectors(args)
 output_folder = os.path.join('results', 'rsa_searchlight_{}_{}'.format(args.target, args.data_split), 
                              args.dataset, args.vectors_folder.split('_')[-1].split('_')[0])
+if args.senses:
+    output_folder = output_folder.replace('rsa_searchlight', 'rsa_searchlight_senses')
 os.makedirs(output_folder, exist_ok=True)
 for s in range(1, n_subjects+1):
 #for s in range(1, 3):
@@ -193,17 +199,35 @@ for s in range(1, n_subjects+1):
     ### Left hemisphere
     #map_nifti = nilearn.image.load_img('region_maps/maps/left_hemisphere.nii')
     full_sub_data, beg, end = load_subject_runs(runs)
+    ### Correcting vectors and brain data keys
+    sub_data_keys = {tuple(k.replace("'", ' ').split()) : k  for k in full_sub_data.keys()}
+    sub_data_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in sub_data_keys.items()}
+    full_sub_data = {k : full_sub_data[v] for k, v in sub_data_keys.items()}
+    ### Balancing number of trials in the case of senses
+    if args.senses:
+        mapper = {tuple(s.replace("'", ' ').replace(' ', '_').split('_')) : '_'.join([s.split(' ')[-1], trial_infos['category'][s_i]]) for s_i, s in enumerate(trial_infos['stimulus'])}
+        senses = {v : [k for k, v_two in mapper.items() if v_two==v] for v in mapper.values()}
+        senses = {k : [' '.join([v_two[i] for i in [0, -1]]) for v_two in v] for k, v in senses.items()}
+        senses = {k : v for k, v in senses.items() if 'neg' not in k}
+
+        random_indices = random.choices(range(5), k=2)
+        for sense, stimuli in senses.items():
+            if len(stimuli) > 1:
+                for sense_stim in stimuli:
+                    full_sub_data[sense_stim] = numpy.array(full_sub_data[sense_stim])[random_indices]
     #full_sub_data = load_subject_runs(runs)
     ### Averaging, keeping only one response per stimulus
     sub_data = {k : numpy.average(v, axis=0) for k, v in full_sub_data.items()}
     dimensionality = list(set([v.shape[0] for k, v in sub_data.items()]))[0]
 
+    '''
     ### Reduce keys to actually present
     ### Correcting vectors and brain data keys
     sub_data_keys = {tuple(k.replace("'", ' ').split()) : k  for k in sub_data.keys()}
     sub_data_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in sub_data_keys.items()}
     sub_data = {k : sub_data[v] for k, v in sub_data_keys.items()}
-    with open('book_fast_stimuli_ratings.tsv') as i:
+    '''
+    with open('{}_stimuli_ratings.tsv'.format(args.dataset)) as i:
         lines = [l.strip().split('\t') for l in i.readlines()]
 
     if args.target == 'concreteness':
@@ -230,11 +254,36 @@ for s in range(1, n_subjects+1):
         stimuli = list(model_data.keys())
     model_data = {s : model_data[s] for s in stimuli}
     sub_data = {k : v for k, v in sub_data.items() if k in model_data.keys()}
+    if args.senses:
+        ### Collapsing senses for words if they are abstract/concrete
+        
+        actual_vectors = dict()
+        actual_brain = dict()
+        for sense, stimuli in senses.items():
+            if len(stimuli) == 1:
+                actual_brain[stimuli[0]] = sub_data[stimuli[0]]
+
+                if args.ceiling:
+                    actual_vectors[stimuli[0]] = current_ceiling[stimuli[0]]
+                else:
+                    actual_vectors[stimuli[0]] = model_data[stimuli[0]]
+            else:
+                data_avg = numpy.average([sub_data[s] for s in stimuli], axis=0)
+                actual_brain[stimuli[0]] = data_avg
+
+                if args.ceiling:
+                    vec_avg = numpy.average([current_ceiling[s] for s in stimuli], axis=0)
+                else:
+                    vec_avg = numpy.average([model_data[s] for s in stimuli], axis=0)
+                actual_vectors[stimuli[0]] = vec_avg
+        sub_data = actual_brain.copy()
+        model_data = actual_brain.copy()
     combs = list(itertools.combinations(list(sub_data.keys()), 2))
     if args.target in ['concreteness', 'familiarity', 'imageability', 'frequency']:
         model_sims = [abs(model_data[c[0]]-model_data[c[1]]) for c in combs]
     elif args.target == 'word_vectors':
         model_sims = [scipy.stats.spearmanr(vectors[c[0]], vectors[c[1]])[0] for c in combs]
+    #vec_sims = [scipy.stats.spearmanr(vectors[c[0]], vectors[c[1]])[0] for c in combs]
 
     logging.info('Computing adjacency matrix...')
     ### Computing adjacency matrix

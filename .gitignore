@@ -4,6 +4,7 @@ plots/
 fisher_scores/
 nilearn_cache/
 voxel_selection/
+*norming_data*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -103,9 +103,10 @@ for s in range(1, n_subjects+1):
                  'for subject {}'.format(s))
     fmri_glm = FirstLevelModel(t_r=1, standardize=True,
                                smoothing_fwhm=8.)
+    import pdb; pdb.set_trace()
     fmri_glm = fmri_glm.fit([r[0] for r in runs], [r[1] for r in runs])
 
-    betas = {k : fmri_glm.compute_contrast(k) for k in cat_mapper.keys()}
+    betas = {k : fmri_glm.compute_contrast(k) for k in cat_mapper.keys() if 'neg' not in runs}
     sub_data = {'all' : dict(), 'simple' : dict(), 
                 'verb' : dict(), 'dot' : dict()}
     for stimulus, full_cat in cat_mapper.items():

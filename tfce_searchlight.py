@@ -17,11 +17,15 @@ parser.add_argument('--target', choices=['concreteness', 'familiarity',
 parser.add_argument('--data_split', choices=['all', 'dot', 
                     'verb', 'simple'], required=True, \
                     help = 'Which data split to use?')
+parser.add_argument('--dataset', choices=['book_fast', 'lunch_fast'],
+                    required=True, help='Which dataset?')
 args = parser.parse_args()
 
 template = nilearn.datasets.load_mni152_template()
 
-folder = os.path.join('results', 'rsa_searchlight_{}_{}'.format(args.target, args.data_split))
+folder = os.path.join('results', 
+                      'rsa_searchlight_{}_{}'.format(args.target, args.data_split),
+                      args.dataset)
 #folder = os.path.join('results', 'searchlight')
 search_results = dict()
 
