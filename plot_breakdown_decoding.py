@@ -19,26 +19,41 @@ for root, direc, filez in os.walk(folder):
         if 'senses' in root:
             if 'fedorenko' in root:
                 all_ceiling = [0.685, 0.683, 0.743, 0.723, 0.633, 0.619, 0.722, 0.744]
+                cmap = 'BuGn_r'
             elif 'general' in root:
                 all_ceiling = [0.662, 0.665, 0.71, 0.691, 0.619, 0.613, 0.708, 0.728]
+                cmap = 'YlGnBu_r'
             elif 'control' in root:
                 all_ceiling = []
+                cmap = 'YlOrBr_r'
             else:
                 all_ceiling = []
+                cmap = 'RdPu_r'
         ### Full set of phrases
         else:
             if 'fedorenko' in root:
                 all_ceiling = [0.701, 0.697, 0.685, 0.675, 0.666, 0.651, 0.75, 0.753]
+                cmap = 'BuGn_r'
             elif 'general' in root:
                 all_ceiling = [0.674, 0.67, 0.638, 0.626, 0.669, 0.657, 0.712, 0.709]
+                cmap = 'YlGnBu_r'
             elif 'control' in root:
                 all_ceiling = [0.659, 0.657, 0.643, 0.625, 0.643, 0.642, 0.696, 0.698]
+                cmap = 'YlOrBr_r'
             else:
                 all_ceiling = [0.679, 0.678, 0.652, 0.636, 0.696, 0.704, 0.694, 0.695]
                 language_ceiling = [0.684, 0.685, 0.67, 0.672, 0.682, 0.684, 0.704, 0.719]
+                cmap = 'RdPu_r'
     elif 'lunch' in root:
         all_ceiling = [0.702, 0.699, 0.681, 0.685, 0.715, 0.722, 0.687, 0.685]
         language_ceiling = [0.712, 0.712, 0.705, 0.724, 0.722, 0.735, 0.706, 0.698]
+        cmap = 'bone'
+    else:
+        print(root)
+        continue
+    ### Setting cmap depending on ROIs
+    pyplot.set_cmap(cmap)
+    pyplot.rcParams['image.cmap'] = cmap
     for fil in filez:
         ### Considering only cases when using the top 4 layers
         if 'results' in fil:
@@ -92,7 +107,7 @@ for root, direc, filez in os.walk(folder):
                         if 'language_areas' in root:
                             ax.fill_between(ceiling_pos, language_ceiling, [1. for i in all_ceiling],
                                             color='lightgray', alpha=.3)
-                        elif 'all' in root:
+                        else:
                             ax.fill_between(ceiling_pos, all_ceiling, [1. for i in all_ceiling],
                                             color='lightgray', alpha=0.3)
                     except ValueError:
@@ -104,7 +119,18 @@ for root, direc, filez in os.walk(folder):
                         data = numpy.array(data[1], dtype=numpy.float64)
                         whole_collector[model_details].append([data])
                         txt_collector.append(data)
-                        ax.violinplot(data, positions=[pos], showmeans=False, showextrema=False)
+                        ax.vlines(x=pos, ymin=min(data), ymax=max(data), color='lightgray')
+                        parts = ax.violinplot(data, positions=[pos], showmeans=False, showextrema=False)
+                        for pc in parts['bodies']:
+                            if pos > 1:
+                                colors = numpy.linspace(.1, .7, 6)
+                                pc.set_facecolor(pyplot.get_cmap(cmap)(colors[pos-2]))
+                            elif pos == 0:
+                                pc.set_facecolor('darkslategrey')
+                            elif pos == 1:
+                                pc.set_facecolor('slategrey')
+                            pc.set_edgecolor('lightgray')
+                            pc.set_alpha(.45)
                         avg = round(numpy.average(data), 3)
                         p = scipy.stats.wilcoxon(data-.5, alternative='greater')[1]
                         mdn = round(numpy.median(data), 3)
@@ -141,6 +167,7 @@ for root, direc, filez in os.walk(folder):
                     ax.set_ylim(ymin=0.0, ymax=1.)
                     ax.set_xlim(xmin=-1.5, xmax=max(positions)+.5)
                     ax.hlines(xmin=-.4, xmax=max(positions)+0.5, y=0.5, alpha=0.5, color='darkgray', linestyle='dashdot')
+                    ax.hlines(xmin=-.4, xmax=max(positions)+0.5, y=[0.3, 0.4, 0.6, 0.7, 0.8, 0.9, 1.], alpha=0.2, color='darkgray', linestyle='dashdot')
                     ax.set_xticks(positions)
                     x_ticks = [t.replace('concrete', 'object')\
                                 .replace('abstract', 'information')\
@@ -160,6 +187,8 @@ for root, direc, filez in os.walk(folder):
 
                     x_ticks_final = [re.sub('\s+', ' ', t) for t in x_ticks_final]
                     x_ticks_final = [t.replace(' ', '\n') for t in x_ticks_final]
+                    #x_ticks_final = [t.replace('Dot', 'Coercion').replace('Verb', 'Transparent').replace('Simple', 'Light Verb') for t in x_ticks_final]
+                    x_ticks_final = [t.replace('Dot', '').replace('Verb', '').replace('Simple', '').strip() for t in x_ticks_final]
                     for x_i, x in enumerate(x_ticks_final):
                         whole_collector[model_details][x_i].append(x)
                     ax.set_xticklabels(x_ticks_final,
@@ -179,6 +208,7 @@ for root, direc, filez in os.walk(folder):
                     ratings = re.findall(r'familiarity|vector_familiarity|concreteness|vector_concreteness|imageability|vector_imageability|frequency|vector_frequency|pairwise_word_vectors', root)
                     if len(ratings) > 0:
                         title = title.replace('word vectors', ratings[0])
+                    title = title.replace('_', ' ')
                     ax.set_title(title, fontsize=20, pad=40)
 
                     ax.spines['right'].set_visible(False)
@@ -198,7 +228,8 @@ for root, direc, filez in os.walk(folder):
                     ax.hlines(y=.14, xmin=-.4, xmax=max(positions)+.2,
                               alpha=.4)
                     ### < 0.6 tick labels
-                    for i in range(3):
+                    ax.set_yticks(numpy.linspace(0.1, 1, 10))
+                    for i in range(2):
                         ax.get_yticklabels()[0].set_visible(False)
                     ### 1.0 tick label
                     #ax.get_yticklabels()[-1].set_visible(False)
