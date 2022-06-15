@@ -9,11 +9,15 @@ from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, AutoModelForMaskedLM
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--layer', choices=['middle_four', 'top_four'],
+parser.add_argument('--layer', choices=['middle_four', 'top_four',
+                                        'high_four'],
                     required=True, help='Which layer?')
 parser.add_argument('--model', choices=['ITBERT', 'MBERT', 'GILBERTO',
                                         'ITGPT2small', 'ITGPT2medium'],
                     required=True, help='Which model?')
+parser.add_argument('--tokens', choices=['single_words', 'span_average', 
+                    'sentence_average'],
+                    required=True, help='How to use words?')
 args = parser.parse_args()
 
 if args.model == 'ITBERT':
@@ -26,26 +30,24 @@ if args.model == 'ITGPT2medium':
     model_name = 'GroNLP/gpt2-medium-italian-embeddings'
 if args.model == 'MBERT':
     model_name = 'bert-base-multilingual-cased'
-#mode = 'cls'
-#mode = 'average'
-mode = 'span'
-
-if 'large' in model_name or 'medium' in model_name:
-    required_shape = (1024,)
-else:
-    required_shape = (768, )
 
 tokenizer = AutoTokenizer.from_pretrained(model_name, sep_token='[SEP]')
-if 'gpt' in model_name:
+if 'gpt' in model_name or 'GPT' in model_name:
     model = AutoModel.from_pretrained(model_name).to('cuda:1')
+    required_shape = model.embed_dim
+    max_len = model.config.n_positions
+    n_layers = model.config.n_layer
 else:
     model = AutoModelForMaskedLM.from_pretrained(model_name).to('cuda:1')
-
+    required_shape = model.config.hidden_size
+    max_len = model.config.max_position_embeddings
+    n_layers = model.config.num_hidden_layers
 
 entity_vectors = dict()
 
 sentences_folder = os.path.join('resources', 'book_for_lunch_sentences')
-sentences_folder = os.path.join('resources', 'single_words_sentences')
+sentences_folder = os.path.join('book_for_lunch_sentences')
+#sentences_folder = os.path.join('resources', 'single_words_sentences')
 
 with tqdm() as pbar:
     for f in os.listdir(sentences_folder):
@@ -60,7 +62,7 @@ with tqdm() as pbar:
 
             inputs = tokenizer(l, return_tensors="pt")
 
-            if mode == 'span':
+            if args.tokens == 'span_average':
                 spans = [i_i for i_i, i in enumerate(inputs['input_ids'].numpy().reshape(-1)) if 
                         i==tokenizer.convert_tokens_to_ids(['[SEP]'])[0]]
                 if 'bert' in model_name and len(spans)%2==1:
@@ -79,14 +81,13 @@ with tqdm() as pbar:
                         continue
                     l = re.sub(r'\[SEP\]', '', l)
                     ### Correcting spans
-                    correction = list(range(len(spans)))
-                    spans = [s-c for s,c in zip(spans, correction)]
+                    correction = list(range(1, len(spans)+1))
+                    spans = [max(0, s-c) for s,c in zip(spans, correction)]
                     split_spans = list()
                     for i in list(range(len(spans)))[::2]:
                         current_span = (spans[i], spans[i+1])
                         split_spans.append(current_span)
 
-                    max_len = 512 if 'bert' in model_name else 1024
                     if len(tokenizer.tokenize(l)) > max_len:
                         continue
                     #outputs = model(**inputs, output_attentions=False, \
@@ -105,21 +106,31 @@ with tqdm() as pbar:
                     hidden_states = numpy.array([s[0].cpu().detach().numpy() for s in outputs['hidden_states']])
                     #last_hidden_states = numpy.array([k.detach().numpy() for k in outputs['hidden_states']])[2:6, 0, :]
                     for beg, end in split_spans:
+                        print(tokenizer.tokenize(l)[beg:end])
+                        if len(tokenizer.tokenize(l)[beg:end]) == 0:
+                            print(l)
+                            continue
                         mention = hidden_states[:, beg:end, :]
                         mention = numpy.average(mention, axis=1)
                         if args.layer == 'middle_four':
-                            layer_start = -8
-                            layer_end = -4
+                            layer_start = int(n_layers / 2)-2
+                            layer_end = int(n_layers/2)+3
                         if args.layer == 'top_four':
                             layer_start = -4
-                            layer_end = mention.shape[0]
+                            ### outputs has at dimension 0 the final output
+                            layer_end = n_layers+1
+                        if args.layer == 'high_four':
+                            layer_start = -5
+                            ### outputs has at dimension 0 the final output
+                            layer_end = n_layers-2
                         mention = mention[layer_start:layer_end, :]
 
                         mention = numpy.average(mention, axis=0)
-                        assert mention.shape == required_shape
+                        assert mention.shape == (required_shape, )
                         entity_vectors[stimulus].append(mention)
                     pbar.update(1)
 
+            '''
             if mode == 'cls':
                 outputs = model(**inputs, output_attentions=False, output_hidden_states=True, return_dict=True)
 
@@ -128,23 +139,44 @@ with tqdm() as pbar:
                 assert mention.shape == required_shape
                 entity_vectors[stimulus].append(mention)
                 pbar.update(1)
+            '''
 
-            if mode == 'average':
+            if args.tokens == 'sentence_average':
+                inputs = tokenizer(l, return_tensors="pt").to('cuda:1')
+                if len(tokenizer.tokenize(l)) > max_len:
+                    continue
                 outputs = model(**inputs, output_attentions=False, \
                                 output_hidden_states=True, return_dict=True)
 
-                last_hidden_states = numpy.array([k.cpu().detach().numpy() for k in outputs['hidden_states']])[-4:, 0, 1:]
-                mention = numpy.average(last_hidden_states, axis=1)
-                mention = numpy.average(mention, axis=0)
-                assert mention.shape == required_shape
+                hidden_states = numpy.array([k.cpu().detach().numpy() for k in outputs['hidden_states']])
+                ### We leave out the CLS
+                hidden_states = hidden_states[:, 0, 1:-1, :]
+                if args.layer == 'middle_four':
+                    layer_start = int(n_layers / 2)-2
+                    layer_end = int(n_layers/2)+2
+                if args.layer == 'top_four':
+                    layer_start = -4
+                    ### outputs has at dimension 0 the final output
+                    layer_end = n_layers +1
+                if args.layer == 'high_four':
+                    layer_start = -5
+                    ### outputs has at dimension 0 the final output
+                    layer_end = n_layers-2
+                ### Averaging tokens
+                mention = numpy.average(hidden_states, axis=1)
+                assert mention.shape == (n_layers+1, required_shape)
+                ### Averaging layers
+                mention = numpy.average(mention[layer_start:layer_end, :], axis=0)
+                assert mention.shape == (required_shape, )
                 entity_vectors[stimulus].append(mention)
                 pbar.update(1)
 
-out_folder = os.path.join('resources', '{}_{}_single_words'.format(args.model, args.layer))
+out_folder = os.path.join('resources', '{}_{}_{}'.format(args.model, args.layer, args.tokens))
 os.makedirs(out_folder, exist_ok=True)
 for k, v in entity_vectors.items():
     with open(os.path.join(out_folder, '{}.vector'.format(k)), 'w') as o:
         for vec in v:
             for dim in vec:
+                assert not numpy.isnan(dim)
                 o.write('{}\t'.format(float(dim)))
             o.write('\n')

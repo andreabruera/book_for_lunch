@@ -1,36 +1,36 @@
-pagare il risotto	simple_concrete
-annullare la decisione	verb_abstract
-organizzare il corso	verb_abstract
-portare l'acqua	verb_concrete
+preparare il viaggio	simple_abstract
+confezionare il regalo	verb_concrete
 cucinare il piatto	verb_concrete
-pagare la pizza	simple_concrete
+cucinare la ricetta	verb_concrete
+pagare la festa	simple_abstract
+portare l'aperitivo	dot_concrete
 organizzare l'aperitivo	dot_abstract
-annullare l'aperitivo	dot_abstract
-organizzare la giornata	verb_abstract
-preparare l'incontro	simple_abstract
-confezionare il pacco	verb_concrete
-portare la cena	dot_concrete
-portare il pranzo	dot_concrete
-annullare la cena	dot_abstract
-preparare la pasta	simple_concrete
-confezionare la cena	dot_concrete
 pagare il viaggio	simple_abstract
-preparare il risotto	simple_concrete
-organizzare la cena	dot_abstract
-prenotare la cena	dot_abstract
-cucinare la cena	dot_concrete
+annullare la decisione	verb_abstract
+organizzare la giornata	verb_abstract
+annullare l'aperitivo	dot_abstract
+annullare l'iscrizione	verb_abstract
+prenotare il pranzo	dot_abstract
+pagare la gita	simple_abstract
 portare la camicia	verb_concrete
 cucinare il pranzo	dot_concrete
-confezionare il regalo	verb_concrete
-pagare la pasta	simple_concrete
-pagare la festa	simple_abstract
-cucinare la ricetta	verb_concrete
-preparare il pane	simple_concrete
-pagare la gita	simple_abstract
-prenotare il posto	verb_abstract
-annullare l'iscrizione	verb_abstract
-preparare la festa	simple_abstract
-preparare il viaggio	simple_abstract
+confezionare il pacco	verb_concrete
+preparare l'incontro	simple_abstract
+pagare il risotto	simple_concrete
+portare la cena	dot_concrete
+annullare la cena	dot_abstract
+portare l'acqua	verb_concrete
+pagare la pizza	simple_concrete
 prenotare il concerto	verb_abstract
-prenotare il pranzo	dot_abstract
-portare l'aperitivo	dot_concrete
+organizzare la cena	dot_abstract
+organizzare il corso	verb_abstract
+preparare il pane	simple_concrete
+prenotare il posto	verb_abstract
+prenotare la cena	dot_abstract
+preparare la festa	simple_abstract
+confezionare la cena	dot_concrete
+preparare il risotto	simple_concrete
+portare il pranzo	dot_concrete
+pagare la pasta	simple_concrete
+preparare la pasta	simple_concrete
+cucinare la cena	dot_concrete

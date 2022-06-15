@@ -6,35 +6,14 @@ import os
 from nilearn import datasets, image, plotting, surface
 ### Surface
 fsaverage = datasets.fetch_surf_fsaverage()
-beg = 4
-end = 11
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', required=True, choices=['book_fast','lunch_fast', \
-                                                         'book_slow', 'lunch_slow'],
-                    help='Specify which dataset to use')
-parser.add_argument('--analysis', required=True, \
-                    choices=['time_resolved', 'whole_trial', 
-                             'whole_trial_flattened'], \
-                    help='Average time points, or run classification'
-                         'time point by time point?')
-parser.add_argument('--spatial_analysis', choices=['ROI', 'all', 'language_areas'], required=True, \
-                    help = 'Specifies how features are to be selected')
-args = parser.parse_args()
-
-folder = os.path.join('voxel_selection',
-                       'fisher_scores', 
-                       '{}_to_{}'.format(beg, end),
-                       args.dataset, args.analysis,
-                       args.spatial_analysis,
-                       )
-
-dataset_path = os.path.join('/', 'import', 'cogsci', 'andrea', 'dataset', 'neuroscience', \
-                        'dot_{}_bids'.format(args.dataset), 'derivatives',
-                        )
+dataset_path = os.path.join('/', 'import', 'cogsci', 'andrea', 
+                            'dataset', 'neuroscience', 
+                            'dot_book_fast_bids', 'derivatives',
+                            )
 sub_path = os.path.join(dataset_path, 'sub-01', 'ses-mri', \
-                         'func',
-                         )
+                                     'func',
+                                     )
 file_path = os.path.join(sub_path, 'sub-01_ses-mri_task-dot{}_run-01_bold.nii'.format(args.dataset.replace('_', '')))
 single_run = nilearn.image.load_img(file_path)
 if args.spatial_analysis == 'all':

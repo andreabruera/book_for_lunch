@@ -13,7 +13,6 @@ import sklearn
 
 from matplotlib import pyplot
 from nilearn import datasets, image, input_data, plotting
-from nilearn.glm.first_level import FirstLevelModel
 from scipy import stats
 from sklearn import feature_selection
 from sklearn.linear_model import Ridge
@@ -158,12 +157,13 @@ parser.add_argument('--analysis', required=True, \
                              'whole_trial_flattened'], \
                     help='Average time points, or run classification'
                          'time point by time point?')
-parser.add_argument('--spatial_analysis', choices=['ROI', 'all', 'language_areas'], required=True, \
+parser.add_argument('--spatial_analysis', choices=['ROI', 'all', 
+                    'language_areas', 'fedorenko_language', 
+                    'control_semantics', 'general_semantice'], 
+                    required=True, \
                     help = 'Specifies how features are to be selected')
 parser.add_argument('--method', choices=['stability', 'fisher'], required=True, \
                     help = 'Which method to use?')
-parser.add_argument('--glm', action='store_true', default=False, \
-                    help = 'Computing GLM before?')
 
 args = parser.parse_args()
 
@@ -214,6 +214,27 @@ for s in range(1, n_subjects+1):
         assert os.path.exists(map_path)
         logging.info('Masking language areas...')
         map_nifti = nilearn.image.load_img(map_path)
+    elif args.spatial_analysis == 'general_semantics':
+        map_path = os.path.join(maps_folder, 'General_semantic_cognition_ALE_result.nii')
+        assert os.path.exists(map_path)
+        logging.info('Masking general semantics areas...')
+        map_nifti = nilearn.image.load_img(map_path)
+        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
+    elif args.spatial_analysis == 'control_semantics':
+        map_path = os.path.join(maps_folder, 'semantic_control_ALE_result.nii')
+        assert os.path.exists(map_path)
+        logging.info('Masking control semantics areas...')
+        map_nifti = nilearn.image.load_img(map_path)
+        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
+    elif args.spatial_analysis == 'fedorenko_language':
+        map_path = os.path.join(maps_folder, 'allParcels_language_SN220.nii')
+        assert os.path.exists(map_path)
+        logging.info('Masking Fedorenko lab\'s language areas...')
+        map_nifti = nilearn.image.load_img(map_path)
+        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
     else:
         map_nifti = None
 

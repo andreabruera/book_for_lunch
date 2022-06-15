@@ -94,7 +94,7 @@ def load_subject_runs(runs, map_nifti=None):
 
             if args.analysis == 'time_resolved':
                 fmri_timeseries = masked_run[:, t:t+18]
-            elif 'whole_trial' in args.analysis:
+            elif 'whole_trial' in args.analysis or args.analysis == 'glm':
                 beg = 4
                 end = 11
                 t_one = t + beg
@@ -124,10 +124,13 @@ parser.add_argument('--dataset', required=True, choices=['book_fast','lunch_fast
                     help='Specify which dataset to use')
 parser.add_argument('--analysis', required=True, \
                     choices=['time_resolved', 'whole_trial', 
-                             'whole_trial_flattened'], \
+                             'glm', 'whole_trial_flattened'], \
                     help='Average time points, or run classification'
                          'time point by time point?')
-parser.add_argument('--spatial_analysis', choices=['ROI', 'all', 'language_areas'], required=True, \
+parser.add_argument('--spatial_analysis', choices=['ROI', 'all', 
+                    'language_areas', 'fedorenko_language', 
+                    'control_semantics', 'general_semantics'], 
+                    required=True, \
                     help = 'Specifies how features are to be selected')
 parser.add_argument('--feature_selection', choices=['fisher', 'stability'], required=True, \
                     help = 'Specifies how features are to be selected')
@@ -143,8 +146,6 @@ parser.add_argument('--encoding', action='store_true', default=False, \
                     help = 'Encoding instead of decoding?')
 parser.add_argument('--ceiling', action='store_true', default=False, \
                     help = 'Ceiling instead of word vectors?')
-parser.add_argument('--glm', action='store_true', default=False, \
-                    help = 'Computing GLM before?')
 parser.add_argument('--vectors_folder', type=str, required=True, \
                     help = 'Specifies where the vectors are stored')
 parser.add_argument('--n_brain_features', type=int, required=True, \
@@ -208,7 +209,7 @@ if args.ceiling:
             runs.append((single_run, trial_infos))
 
         ### GLM
-        if args.glm:
+        if args.analysis == 'glm':
             raise RuntimeError('Still to implement')
 
         else:
@@ -269,11 +270,32 @@ for s in range(1, n_subjects+1):
         assert os.path.exists(map_path)
         logging.info('Masking language areas...')
         map_nifti = nilearn.image.load_img(map_path)
+    elif args.spatial_analysis == 'general_semantics':
+        map_path = os.path.join(maps_folder, 'General_semantic_cognition_ALE_result.nii')
+        assert os.path.exists(map_path)
+        logging.info('Masking general semantics areas...')
+        map_nifti = nilearn.image.load_img(map_path)
+        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
+    elif args.spatial_analysis == 'control_semantics':
+        map_path = os.path.join(maps_folder, 'semantic_control_ALE_result.nii')
+        assert os.path.exists(map_path)
+        logging.info('Masking control semantics areas...')
+        map_nifti = nilearn.image.load_img(map_path)
+        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
+    elif args.spatial_analysis == 'fedorenko_language':
+        map_path = os.path.join(maps_folder, 'allParcels_language_SN220.nii')
+        assert os.path.exists(map_path)
+        logging.info('Masking Fedorenko lab\'s language areas...')
+        map_nifti = nilearn.image.load_img(map_path)
+        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
     else:
         #map_nifti = None
         map_nifti = nilearn.masking.compute_brain_mask(runs[0][0])
     ### GLM
-    if args.glm:
+    if args.analysis == 'glm':
         logging.info('Now estimating BOLD responses using GLM '\
                      'for subject {}'.format(s))
 
@@ -312,29 +334,27 @@ for s in range(1, n_subjects+1):
         senses = {k : [' '.join([v_two[i] for i in [0, -1]]) for v_two in v] for k, v in senses.items()}
         senses = {k : v for k, v in senses.items() if 'neg' not in k}
 
-    ### Averaging, keeping only one response per stimulus
-    if not args.glm:
-        sub_data = {k : numpy.average(v, axis=0) if v.shape[0]<10 else v for k, v in full_sub_data.items()}
-        ### Balancing number of trials in the case of senses
-        if args.senses:
+    ### Balancing number of trials in the case of senses
+    sub_data = dict()
+    if args.senses:
 
-            for sense, stimuli in senses.items():
-                if len(stimuli) > 1:
-                    k = 2 if len(stimuli)==3 else 3
-                    random_indices = random.choices(range(5), k=k)
-                    for sense_stim in stimuli:
-                        full_sub_data[sense_stim] = numpy.array(full_sub_data[sense_stim])[random_indices]
-    else:
-        sub_data = full_sub_data.copy()
-    print([v.shape for v in full_sub_data.values()])
+        for sense, stimuli in senses.items():
+            if len(stimuli) > 1:
+                k = 2 if len(stimuli)==3 else 3
+                random_indices = random.choices(range(5), k=k)
+                for sense_stim in stimuli:
+                    sub_data[sense_stim] = numpy.array(full_sub_data[sense_stim])[random_indices]
+    sub_data = {k : numpy.average(v, axis=0) if len(v)<10 else v for k, v in full_sub_data.items()}
+    print([len(v) for v in sub_data.values()])
     dimensionality = list(set([v.shape[0] for k, v in sub_data.items()]))[0]
     ### Extracting 5k random indices
     #random_indices = random.sample(list(range(dimensionality)), k=10000)
     #sub_data = {k : v[random_indices] for k, v in sub_data.items()}
+    feature_analysis = 'whole_trial' if args.analysis == 'glm' else args.analysis
     feature_folder = os.path.join('voxel_selection',
                            '{}_scores'.format(args.feature_selection), 
                            '{}_to_{}'.format(beg, end),
-                           args.dataset, args.analysis, args.spatial_analysis, 
+                           args.dataset, feature_analysis, args.spatial_analysis, 
                            'sub-{:02}.{}'.format(s, args.feature_selection))
     with open(feature_folder) as i:
         lines = numpy.array([l.strip().split('\t') for l in i.readlines()][0], dtype=numpy.float64)
@@ -351,7 +371,7 @@ for s in range(1, n_subjects+1):
         current_ceiling = {k : v[selected_dims] for k, v in current_ceiling.items()}
         ceiling_keys = {tuple(k.replace("'", ' ').split()) : k  for k in current_ceiling.keys()}
         ceiling_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in ceiling_keys.items()}
-        current_ceiling = {k : current_ceiling[v] for k, v in ceiling_keys.items()}
+        current_ceiling = {k : current_ceiling[v] for k, v in ceiling_keys.items() if 'neg' not in k}
     ### Limiting
     ### Taking away 'unclear' samples
     '''
@@ -412,6 +432,7 @@ for s in range(1, n_subjects+1):
         
         actual_vectors = dict()
         actual_brain = dict()
+
         for sense, stimuli in senses.items():
             if len(stimuli) == 1:
                 actual_brain[stimuli[0]] = sub_data[stimuli[0]]
@@ -421,6 +442,7 @@ for s in range(1, n_subjects+1):
                 else:
                     actual_vectors[stimuli[0]] = vectors[stimuli[0]]
             else:
+                ### Averaging brain responses
                 data_avg = numpy.average([sub_data[s] for s in stimuli], axis=0)
                 actual_brain[stimuli[0]] = data_avg
 
@@ -445,7 +467,7 @@ for s in range(1, n_subjects+1):
     if args.target == 'pairwise_word_vectors':
         actual_vectors = {k : [scipy.stats.spearmanr(v, v_two)[0] for k_two, v_two in actual_vectors.items() if k!=k_two] for k, v in actual_vectors.items()}
     #vectors = {k : vectors[k] for k, v in sub_data.items()}
-    if args.ceiling and args.target == 'word_vectors':
+    if args.ceiling and args.target == 'word_vectors' and not args.senses:
         actual_vectors = current_ceiling.copy()
     ### Standardization
     #standardized_input = sklearn.preprocessing.StandardScaler().fit_transform(numpy.array(list(actual_brain.values())))
@@ -592,8 +614,6 @@ if args.ceiling:
 if args.senses:
     output_folder = output_folder.replace('decoding', 'senses_decoding')
 output_folder = output_folder.replace('decoding', '{}_decoding'.format(args.target))
-if args.glm:
-    output_folder = output_folder.replace('decoding', 'glm_decoding')
 if args.encoding:
     output_folder = output_folder.replace('decoding', 'encoding')
 os.makedirs(output_folder, exist_ok=True)

@@ -1,5 +1,6 @@
+import html
 import os
-import resources.lemmatize_italian_data.pymorphit_cls
+from resources.lemmatize_italian_data import pymorphit_cls
 import re
 
 from tqdm import tqdm
@@ -7,6 +8,8 @@ from tqdm import tqdm
 book_f = '/import/cogsci/andrea/dataset/neuroscience/dot_book_fast_bids/derivatives/sub-01/ses-mri/func/sub-01_ses-mri_task-dotbookfast_run-01_events.tsv'
 lunch_f = '/import/cogsci/andrea/dataset/neuroscience/dot_lunch_fast_bids/derivatives/sub-01/ses-mri/func/sub-01_ses-mri_task-dotlunchfast_run-01_events.tsv'
 stimuli = list()
+
+
 for events_path in [book_f, lunch_f]:
     with open(events_path) as i:
         lines = [l.strip().split('\t') for l in i.readlines()]
@@ -34,6 +37,84 @@ for events_path in [book_f, lunch_f]:
 sentences = {tuple(k.replace("'", ' ').split(' ')) : k for k in stimuli}
 sentences = {(k[0], k[-1]) if len(k)==3 else k : ['[SEP] {} [SEP]'.format(v)] for k, v in sentences.items()}
 del sentences[('neg', 'neg')]
+
+print('other')
+lemmatizer = pymorphit_cls.PyMorphITCLS()
+
+### To be lemmatized
+folders = [ 
+            '/import/cogsci/andrea/dataset/corpora/gutenberg_it/',
+            '/import/cogsci/andrea/dataset/corpora/opensubs_it_ready', 
+            '/import/cogsci/andrea/dataset/corpora/wikipedia_italian/it_wiki_article_by_article/',
+            ]
+
+counter = 0
+with tqdm() as pbar:
+    for folder in folders:
+        print(folder)
+        for root, direc, filez in os.walk(folder):
+            for f in filez:
+                if 'gutenberg' not in root:
+                    with open(os.path.join(root, f)) as i:
+                        lines = [l.strip() for l in i.readlines()]
+                else:
+                    with open(os.path.join(root, f), encoding='latin-1') as i:
+                        lines = [u'{}'.format(html.unescape(i.read()))]
+                    lines = [re.sub(r"[^A-Za-z.]"," ", l) for l in lines]
+                    lines = [re.sub('(?<=\w)[.]', r' .', l) for l in lines]
+                    lines = [re.sub('[.](?=\w)', r'. ', l) for l in lines]
+                    lines = [re.sub('\s+?', ' ', l) for l in lines]
+                    for l in lines:
+                        split_s = l.strip()
+                        split_s = re.sub(r'\s+[\']\s+', r"' ", split_s).split()
+                        split_lem = lemmatizer.lemmatize_line(l, mode='Q').split()
+                        if not len(split_s) == len(split_lem):
+                            print(f)
+                        else:
+                            ### Making sentences shorter
+                            if len(split_s) < 128:
+                                short_sentences = [split_s]
+                                short_lemmas = [split_lem]
+                            else:
+                                short_sentences = list()
+                                short_lemmas = list()
+                                sent = list()
+                                sent_lem = list()
+                                for t, l_t in zip(split_s, split_lem):
+                                    sent.append(t)
+                                    sent_lem.append(l_t)
+                                    if '.' in t:
+                                        if len(sent) > 128:
+                                            short_sentences.append(sent)
+                                            short_lemmas.append(sent_lem)
+                                            sent = list()
+                                            sent_lem = list()
+                                short_sentences.append(sent)
+                                short_lemmas.append(sent_lem)
+
+                            for l, lemmaed in zip(short_sentences, short_lemmas):
+                                assert isinstance(lemmaed, list)
+                                assert isinstance(l, list)
+                                for one, two in sentences.keys():
+                                    indices_one = [i for i, t in enumerate(lemmaed) if t==one]
+                                    indices_two = [i for i, t in enumerate(lemmaed) if t==two]
+                                    if len(indices_one)>1 and len(indices_two)>1:
+                                        for idx_one in indices_one:
+                                            for idx_two in indices_two:
+                                                if idx_two-idx_one in [1, 2, 3]:
+                                                    try:
+                                                        l[idx_one] = '[SEP] {}'.format(l[idx_one])
+                                                        l[idx_two] = '{} [SEP]'.format(l[idx_two])
+                                                        #l[idx_one] = '[SEP] {} [SEP]'.format(l[idx_one])
+                                                        #l[idx_two] = '[SEP] {} [SEP]'.format(l[idx_two])
+                                                    except TypeError:
+                                                        pass
+                                        l = ' '.join(l)
+                                        if '[SEP]' in l:
+                                            print(l)
+                                            sentences[(one, two)].append(l)
+                                            pbar.update(1)
+
 print('Itwac')
 
 ### ItWac sentences
@@ -100,6 +181,8 @@ with tqdm() as pbar:
                                         try:
                                             l[idx_one] = '[SEP] {}'.format(l[idx_one])
                                             l[idx_two] = '{} [SEP]'.format(l[idx_two])
+                                            #l[idx_one] = '[SEP] {} [SEP]'.format(l[idx_one])
+                                            #l[idx_two] = '[SEP] {} [SEP]'.format(l[idx_two])
                                         except TypeError:
                                             pass
                             l = ' '.join(l)
@@ -107,68 +190,6 @@ with tqdm() as pbar:
                                 print(l)
                                 sentences[(one, two)].append(l)
                                 pbar.update(1)
-
-print('other')
-lemmatizer = pymorphit_cls.PyMorphITCLS()
-
-### To be lemmatized
-folders = ['/import/cogsci/andrea/dataset/corpora/opensubs_it_ready', 
-            '/import/cogsci/andrea/dataset/corpora/wikipedia_italian/it_wiki_article_by_article/']
-
-counter = 0
-with tqdm() as pbar:
-    for folder in folders:
-        for root, direc, filez in os.walk(folder):
-            for f in filez:
-                with open(os.path.join(root, f), errors='ignore') as i:
-                    for l in i.readlines():
-                        split_s = l.strip()
-                        split_s = re.sub(r'\s+[\']\s+', r"' ", split_s).split()
-                        split_lem = lemmatizer.lemmatize_line(l, mode='Q').split()
-                        if len(split_s) == len(split_lem):
-                            ### Making sentences shorter
-                            if len(split_s) < 128:
-                                short_sentences = [split_s]
-                                short_lemmas = [split_lem]
-                            else:
-                                short_sentences = list()
-                                short_lemmas = list()
-                                sent = list()
-                                sent_lem = list()
-                                for t, l_t in zip(split_s, split_lem):
-                                    sent.append(t)
-                                    sent_lem.append(l_t)
-                                    if '.' in t:
-                                        if len(sent) > 128:
-                                            short_sentences.append(sent)
-                                            short_lemmas.append(sent_lem)
-                                            sent = list()
-                                            sent_lem = list()
-                                short_sentences.append(sent)
-                                short_lemmas.append(sent_lem)
-
-                            for l, lemmaed in zip(short_sentences, short_lemmas):
-                                assert isinstance(lemmaed, list)
-                                assert isinstance(l, list)
-                                for one, two in sentences.keys():
-                                    indices_one = [i for i, t in enumerate(lemmaed) if t==one]
-                                    indices_two = [i for i, t in enumerate(lemmaed) if t==two]
-                                    if len(indices_one)>1 and len(indices_two)>1:
-                                        for idx_one in indices_one:
-                                            for idx_two in indices_two:
-                                                if idx_two-idx_one in [1, 2, 3]:
-                                                    try:
-                                                        l[idx_one] = '[SEP] {}'.format(l[idx_one])
-                                                        l[idx_two] = '{} [SEP]'.format(l[idx_two])
-                                                    except TypeError:
-                                                        pass
-                                        l = ' '.join(l)
-                                        if '[SEP]' in l:
-                                            print(l)
-                                            sentences[(one, two)].append(l)
-                                            pbar.update(1)
-
-
 
 out = 'book_for_lunch_sentences'
 os.makedirs(out, exist_ok=True)

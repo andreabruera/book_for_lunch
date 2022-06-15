@@ -15,11 +15,15 @@ def read_vectors(args):
             print(f)
             continue
         else:
+            #vecs = vecs[0]
+            ### First vector is for mention
+            #first_vec = vecs[0, :].reshape(1, -1)
             ### Randomizing vector order
-            numpy.random.shuffle(vecs)
+            #vecs = numpy.random.shuffle(vecs[1:])
             ### Limiting to 32 mentions
-            vecs = vecs[:32, :]
-            if vecs.shape[0] not in [1024, 768, 300]:
+            #vecs = numpy.concatenate((first_vec, vecs[:32, :]), axis=0)
+            #vecs = vecs[:, :]
+            if vecs.shape[0] not in [1024, 768, 300, 600]:
                 vecs = numpy.nanmean(vecs, axis=0)
                 '''
                 if args.vector_averaging == 'avg':
@@ -29,7 +33,7 @@ def read_vectors(args):
                     ### Maxpool
                     vecs = numpy.array([max([v[i] for v in vecs]) for i in range(vecs.shape[-1])], dtype=numpy.float64)
                 '''
-            assert vecs.shape[0] in [1024, 768, 300]
+            assert vecs.shape[0] in [1024, 768, 300, 600]
             vectors[f.replace('_', ' ').split('.')[0]] = vecs
 
     return vectors

@@ -10,6 +10,7 @@ logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 book_f = '/import/cogsci/andrea/dataset/neuroscience/dot_book_fast_bids/derivatives/sub-01/ses-mri/func/sub-01_ses-mri_task-dotbookfast_run-01_events.tsv'
 lunch_f = '/import/cogsci/andrea/dataset/neuroscience/dot_lunch_fast_bids/derivatives/sub-01/ses-mri/func/sub-01_ses-mri_task-dotlunchfast_run-01_events.tsv'
 stimuli = list()
+
 for events_path in [book_f, lunch_f]:
     with open(events_path) as i:
         lines = [l.strip().split('\t') for l in i.readlines()]
@@ -44,8 +45,11 @@ print('other')
 lemmatizer = pymorphit_cls.PyMorphITCLS()
 
 ### To be lemmatized
-folders = ['/import/cogsci/andrea/dataset/corpora/opensubs_it_ready', 
-            '/import/cogsci/andrea/dataset/corpora/wikipedia_italian/it_wiki_article_by_article/']
+folders = [ 
+            '/import/cogsci/andrea/dataset/corpora/gutenberg_it/',
+            '/import/cogsci/andrea/dataset/corpora/opensubs_it_ready', 
+            '/import/cogsci/andrea/dataset/corpora/wikipedia_italian/it_wiki_article_by_article/',
+            ]
 
 counter = 0
 with tqdm() as pbar:
