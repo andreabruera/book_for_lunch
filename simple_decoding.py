@@ -138,7 +138,9 @@ parser.add_argument('--feature_selection', choices=['fisher', 'stability'], requ
                     help = 'Specifies how features are to be selected')
 parser.add_argument('--n_folds', type=int, default=1000, \
                     help = 'Specifies how many folds to test on')
-parser.add_argument('--method', choices=['encoding', 'decoding', 'rsa_encoding', 'rsa_decoding',
+parser.add_argument('--methodology', choices=[
+                    'encoding', 'decoding', 
+                    'rsa_encoding', 'rsa_decoding'],
                     required=True,
                     help = 'Encoding instead of decoding?')
 parser.add_argument('--ceiling', action='store_true', default=False, \
@@ -163,6 +165,7 @@ parser.add_argument('--senses', action='store_true', default=False, \
 args = parser.parse_args()
 
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
+numpy.seterr(all='raise')
 
 os.makedirs('region_maps', exist_ok=True)
 dataset_path = os.path.join('/', 'import', 'cogsci', 'andrea', 'dataset', 'neuroscience', \
@@ -455,10 +458,12 @@ for s in range(1, n_subjects+1):
     #actual_brain = {k : v for k, v in actual_brain.items() if k in actual_vectors.keys()}
     #actual_vectors = {k : actual_vectors[k] for k, v in actual_brain.items()}
     ### RSA decoding
-    if args.rsa:
+    if 'rsa' in args.methodology:
         logging.info('Computing RSA vectors...')
         actual_brain = {k : [scipy.stats.pearsonr(v, v_two)[0] for k_two, v_two in actual_brain.items() if k!=k_two] for k, v in actual_brain.items()}
-        actual_vectors = {k : [scipy.stats.pearsonr(v, v_two)[0] for k_two, v_two in actual_vectors.items() if k!=k_two] for k, v in actual_vectors.items()}
+        ### Cognitive model are already pairwise distances
+        if args.computational_model in ['gpt2', 'fasttext']:
+            actual_vectors = {k : [scipy.stats.pearsonr(v, v_two)[0] for k_two, v_two in actual_vectors.items() if k!=k_two] for k, v in actual_vectors.items()}
     ### TODO: implement pairwise word vectors
     '''
     if args.computational_model == 'pairwise_word_vectors':
@@ -487,7 +492,7 @@ for s in range(1, n_subjects+1):
     combs = list(itertools.combinations(list(actual_vectors.keys()), 2))
     for c in tqdm(combs):
         ### Encoding
-        if 'encoding' in args.method:
+        if 'encoding' in args.methodology:
             ### PCA reduction of vectors
             train_inputs = [v for k, v in actual_vectors.items() if k not in c]
             train_targets = [v for k, v in actual_brain.items() if k not in c]
@@ -511,48 +516,50 @@ for s in range(1, n_subjects+1):
             test_inputs = [actual_brain[c_i] for c_i in c]
             test_targets = [actual_vectors[c_i] for c_i in c]
 
-            ### RSA
-            if 'rsa' in args.method:
-                wrong = 0.
-                for idx_one, idx_two in [(0, 1), (1, 0)]:
-                    wrong += scipy.stats.pearsonr(test_inputs[idx_one], test_targets[idx_two])[0]
-                correct = 0.
-                for idx_one, idx_two in [(0, 0), (1, 1)]:
-                    correct += scipy.stats.pearsonr(test_inputs[idx_one], test_targets[idx_two])[0]
-                if correct > wrong:
-                    accuracies.append(1)
-                else:
-                    accuracies.append(0)
+        print('Input shape: {}'.format(test_inputs[0].shape))
+        print('Target shape: {}'.format(test_targets[0].shape))
+        ### RSA
+        if 'rsa' in args.methodology:
+            wrong = 0.
+            for idx_one, idx_two in [(0, 1), (1, 0)]:
+                wrong += scipy.stats.pearsonr(test_inputs[idx_one], test_targets[idx_two])[0]
+            correct = 0.
+            for idx_one, idx_two in [(0, 0), (1, 1)]:
+                correct += scipy.stats.pearsonr(test_inputs[idx_one], test_targets[idx_two])[0]
+            if correct > wrong:
+                accuracies.append(1)
             else:
-                ### Ridge
-                model = Ridge(alpha=1.0)
-                model.fit(train_inputs, train_targets)
+                accuracies.append(0)
+        else:
+            ### Ridge
+            model = Ridge(alpha=1.0)
+            model.fit(train_inputs, train_targets)
 
-                predictions = model.predict(test_inputs)
-                assert len(predictions) == len(test_targets)
-                wrong = 0.
-                for idx_one, idx_two in [(0, 1), (1, 0)]:
-                    wrong += scipy.stats.pearsonr(predictions[idx_one], test_targets[idx_two])[0]
-                    '''
-                    if args.computational_model == 'word_vectors':
-                        wrong += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
-                    else:
-                        wrong -= abs(predictions[idx_one] - test_targets[idx_two])
-                    '''
-                correct = 0.
-                for idx_one, idx_two in [(0, 0), (1, 1)]:
-                    correct += scipy.stats.pearsonr(predictions[idx_one], test_targets[idx_two])[0]
-                    '''
-                    if args.computational_model == 'word_vectors':
-                        correct += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
-                    else:
-                        correct -= abs(predictions[idx_one] - test_targets[idx_two])
-                    '''
-                #import pdb; pdb.set_trace()
-                if correct > wrong:
-                    accuracies.append(1)
+            predictions = model.predict(test_inputs)
+            assert len(predictions) == len(test_targets)
+            wrong = 0.
+            for idx_one, idx_two in [(0, 1), (1, 0)]:
+                wrong += scipy.stats.pearsonr(predictions[idx_one], test_targets[idx_two])[0]
+                '''
+                if args.computational_model == 'word_vectors':
+                    wrong += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
                 else:
-                    accuracies.append(0)
+                    wrong -= abs(predictions[idx_one] - test_targets[idx_two])
+                '''
+            correct = 0.
+            for idx_one, idx_two in [(0, 0), (1, 1)]:
+                correct += scipy.stats.pearsonr(predictions[idx_one], test_targets[idx_two])[0]
+                '''
+                if args.computational_model == 'word_vectors':
+                    correct += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
+                else:
+                    correct -= abs(predictions[idx_one] - test_targets[idx_two])
+                '''
+            #import pdb; pdb.set_trace()
+            if correct > wrong:
+                accuracies.append(1)
+            else:
+                accuracies.append(0)
 
     accuracy = numpy.average(accuracies)
     print(accuracy)
@@ -598,9 +605,9 @@ for s in range(1, n_subjects+1):
 
 output_folder = os.path.join(
                              'results',
-                             'vector_{}'.format(args.method),
+                             'vector_{}'.format(args.methodology),
                              args.analysis, 
-                             'senses_{}'.format(args.senses)
+                             'senses_{}'.format(args.senses),
                              '{}_{}'.format(args.feature_selection, n_dims), 
                              args.computational_model, 
                              args.spatial_analysis,

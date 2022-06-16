@@ -38,15 +38,38 @@ for root, direc, filez in os.walk(folder):
                             #print(h)
                             continue
                 if len(current_collector.keys()) > 1:
-                    if 'senses' in root:
-                        all_ceiling = [0.703, 0.625, 0.625, 0.625, 0.562]
-                        language_ceiling = [0.684, 0.562, 0.688, 0.688, 0.75]
-                    else:
-                        all_ceiling = [0.679, 0.618, 0.594, 0.562, 0.406]
-                        language_ceiling = [0.684, 0.667, 0.594, 0.75, 0.469]
 
-                    #if 'ceiling' in root and 'senses' in root:
-                    #    import pdb; pdb.set_trace()
+                    ### ceiling values
+                    all_ceiling = [1., 1., 1., 1.,1.]
+
+                    ### senses analysis
+                    if 'senses' in root:
+                        if 'fedorenko' in root:
+                            all_ceiling = [0.685, 0.5, 0.75, 0.75, 0.625]
+                            cmap = 'BuGn_r'
+                        elif 'general' in root:
+                            all_ceiling = [0.662, 0.562, 0.625, 0.875, 0.562]
+                            cmap = 'YlGnBu_r'
+                        elif 'control' in root:
+                            all_ceiling = [0.641, 0.5, 0.688, 0.875, 0.562]
+                            cmap = 'YlOrBr_r'
+                        else:
+                            cmap = 'RdPu_r'
+                    ### Full set of phrases
+                    else:
+                        if 'fedorenko' in root:
+                            all_ceiling = [0.701, 0.66, 0.625, 0.75, 0.469]
+                            cmap = 'BuGn_r'
+                        elif 'general' in root:
+                            all_ceiling = [0.674, 0.66, 0.594, 0.875, 0.375]
+                            cmap = 'YlGnBu_r'
+                        elif 'control' in root:
+                            all_ceiling = [0.659, 0.667, 0.625, 0.875, 0.469]
+                            cmap = 'YlOrBr_r'
+                        else:
+                            all_ceiling = [0.678, 0.653, 0.562, 0.625, 0.438]
+                            cmap = 'RdPu_r'
+
                     fold = root.split('/')[-6]
 
                     fig, ax = pyplot.subplots(figsize=(20, 9), constrained_layout=True)
@@ -57,9 +80,11 @@ for root, direc, filez in os.walk(folder):
                     ceiling_pos[-1] = len(ceiling_pos) - .6
                     try:
                         if 'language_areas' in root:
+                            ### ROI removed
+                            continue
                             ax.fill_between(ceiling_pos, language_ceiling, [1. for i in all_ceiling],
                                             color='lightgray', alpha=.3)
-                        elif 'all' in root:
+                        else:
                             ax.fill_between(ceiling_pos, all_ceiling, [1. for i in all_ceiling],
                                             color='lightgray', alpha=0.3)
                     except ValueError:
@@ -71,7 +96,15 @@ for root, direc, filez in os.walk(folder):
                     for pos, data in zip(positions, current_collector.items()):
                         data = numpy.array(data[1], dtype=numpy.float64)
                         txt_collector.append(data)
-                        ax.violinplot(data, positions=[pos], showmeans=False, showextrema=False)
+                        parts = ax.violinplot(data, positions=[pos], showmeans=False, showextrema=False)
+                        for pc in parts['bodies']:
+                            if pos > 0:
+                                colors = numpy.linspace(.1, .7, 4)
+                                pc.set_facecolor(pyplot.get_cmap(cmap)(colors[pos-1]))
+                            elif pos == 0:
+                                pc.set_facecolor('darkslategrey')
+                            pc.set_edgecolor('lightgray')
+                            pc.set_alpha(.45)
                         avg = round(numpy.average(data), 3)
                         p = scipy.stats.wilcoxon(data-.5, alternative='greater')[1]
                         mdn = round(numpy.median(data), 3)
@@ -158,6 +191,7 @@ for root, direc, filez in os.walk(folder):
                     ax.spines['left'].set_visible(False)
                     ax.tick_params('y', labelsize=15, length=0)
                     ax.tick_params('y', length=0)
+                    ax.hlines(xmin=-.4, xmax=max(positions)+0.5, y=[0.3, 0.4, 0.6, 0.7, 0.8, 0.9, 1.], alpha=0.2, color='darkgray', linestyle='dashdot')
                     ax.text(x=-.9, y=.8, s='Noise\nceiling', fontsize=18,
                             ha='center', va='center', fontweight='bold')
                     ax.text(x=-.9, y=0.5, s='Chance level', fontsize=18,
@@ -174,6 +208,9 @@ for root, direc, filez in os.walk(folder):
                     ax.get_yticklabels()[-1].set_visible(False)
                     '''
                     ax.vlines(x=[.5], ymin=0.1, ymax=0.9, alpha=0.4)
+                    ax.set_yticks(numpy.linspace(0.1, 1, 10))
+                    for i in range(2):
+                        ax.get_yticklabels()[0].set_visible(False)
 
                     '''
                     ax.text(x=.5, y=0.9, s='Overall', fontsize=18,

@@ -157,7 +157,8 @@ parser.add_argument('--analysis', required=True, \
                              'whole_trial_flattened'], \
                     help='Average time points, or run classification'
                          'time point by time point?')
-parser.add_argument('--spatial_analysis', choices=['ROI', 'all', 
+parser.add_argument('--spatial_analysis', choices=[ 
+                    'whole_brain', 
                     'language_areas', 'fedorenko_language', 
                     'control_semantics', 'general_semantice'], 
                     required=True, \
