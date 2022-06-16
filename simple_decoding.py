@@ -146,6 +146,8 @@ parser.add_argument('--methodology', choices=[
 parser.add_argument('--computational_model', type=str, required=True, \
                                          choices=[
                                          'fasttext', 'gpt2',
+                                         'fasttext_concreteness', 
+                                         'gpt2_concreteness',
                                          'familiarity', 
                                          #'vector_familiarity', 
                                          'concreteness', 
@@ -407,9 +409,14 @@ for s in range(1, n_subjects+1):
         ceiling_keys = {tuple(k.replace("'", ' ').split()) : k  for k in current_ceiling.keys()}
         ceiling_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in ceiling_keys.items()}
         vectors = {k : current_ceiling[v] for k, v in ceiling_keys.items() if 'neg' not in k}
-    ### Pairwise similarities for concreteness etc
-    elif args.computational_model not in ['fasttext', 'gpt2']:
+    elif args.computational_model not in ['gpt2', 'fasttext']:
+        ### Pairwise similarities
         vectors = {k : [abs(model_data[k]-model_data[k_two]) for k_two in full_sub_data.keys() if k_two!=k] for k in full_sub_data.keys()}
+        ### Mixed vectors
+        if 'gpt2' in args.computational_model or 'fasttext' in args.computational_model:
+            vec_part_one = read_vectors(args)
+            shared_keys = [k for k in vec_part_one.keys() if k in vectors.keys()]
+            vectors = {k : numpy.hstack((vec_part_one[k], vectors[k])) for k in shared_keys}
 
     vectors_keys = {tuple(k.replace("_", ' ').split()) : k  for k in vectors.keys()}
     vectors_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in vectors_keys.items()}
@@ -549,7 +556,7 @@ for s in range(1, n_subjects+1):
 
             test_inputs = [actual_brain[c_i] for c_i in c]
             test_targets = [actual_vectors[c_i] for c_i in c]
-            assert train_targets[0].shape == (args.n_brain_features, )
+            assert test_inputs[0].shape == (args.n_brain_features, )
 
         #print('Input shape: {}'.format(test_inputs[0].shape))
         #print('Target shape: {}'.format(test_targets[0].shape))

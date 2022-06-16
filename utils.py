@@ -3,9 +3,9 @@ import os
 
 def read_vectors(args):
 
-    if args.computational_model == 'gpt2':
+    if 'gpt2' in args.computational_model:
         vec_folder = os.path.join('resources', 'ITGPT2medium_top_four_span_average')
-    if args.computational_model == 'fasttext':
+    if 'fasttext' in args.computational_model:
         vec_folder = os.path.join('resources', 'fasttext_concatenated')
     vectors = dict()
     for f in os.listdir(vec_folder):
