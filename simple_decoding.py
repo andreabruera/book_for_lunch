@@ -143,8 +143,6 @@ parser.add_argument('--methodology', choices=[
                     'rsa_encoding', 'rsa_decoding'],
                     required=True,
                     help = 'Encoding instead of decoding?')
-parser.add_argument('--ceiling', action='store_true', default=False, \
-                    help = 'Ceiling instead of word vectors?')
 parser.add_argument('--computational_model', type=str, required=True, \
                                          choices=[
                                          'fasttext', 'gpt2',
@@ -156,6 +154,7 @@ parser.add_argument('--computational_model', type=str, required=True, \
                                          #'vector_frequency',
                                          'imageability', 
                                          #'vector_imageability'
+                                         'ceiling',
                                          ], 
                     help = 'Specifies where the vectors are stored')
 parser.add_argument('--n_brain_features', type=int, required=True, \
@@ -199,7 +198,7 @@ else:
             model_data[l[0]] = numpy.log(length)
 
 ### Ceiling
-if args.ceiling:
+if args.computational_model == 'ceiling':
     ceiling_data = dict()
     for s in range(1, n_subjects+1):
     #for s in range(1, 3):
@@ -355,17 +354,17 @@ for s in range(1, n_subjects+1):
     sub_data_keys = {tuple(k.replace("'", ' ').split()) : k  for k in full_sub_data.keys()}
     sub_data_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in sub_data_keys.items()}
     full_sub_data = {k : full_sub_data[v] for k, v in sub_data_keys.items() if 'neg' not in k}
-    ### Pairwise similarities for concreteness etc
-    if args.computational_model not in ['fasttext', 'gpt2']:
-        vectors = {k : [abs(model_data[k]-model_data[k_two]) for k_two in full_sub_data.keys() if k_two!=k] for k in full_sub_data.keys()}
     ### Ceiling
-    elif args.computational_model == 'ceiling':
+    if args.computational_model == 'ceiling':
         current_ceiling = {k : [ceiling_data[sub][k] for sub in range(1, len(ceiling_data.keys())+1) if sub!=s] for k in ceiling_data[s].keys()}
         current_ceiling = {k : numpy.average(v, axis=0) for k, v in current_ceiling.items()}
         current_ceiling = {k : v[selected_dims] for k, v in current_ceiling.items()}
         ceiling_keys = {tuple(k.replace("'", ' ').split()) : k  for k in current_ceiling.keys()}
         ceiling_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in ceiling_keys.items()}
         vectors = {k : current_ceiling[v] for k, v in ceiling_keys.items() if 'neg' not in k}
+    ### Pairwise similarities for concreteness etc
+    elif args.computational_model not in ['fasttext', 'gpt2']:
+        vectors = {k : [abs(model_data[k]-model_data[k_two]) for k_two in full_sub_data.keys() if k_two!=k] for k in full_sub_data.keys()}
 
     vectors_keys = {tuple(k.replace("_", ' ').split()) : k  for k in vectors.keys()}
     vectors_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in vectors_keys.items()}
@@ -499,6 +498,7 @@ for s in range(1, n_subjects+1):
 
             test_inputs = [actual_vectors[c_i] for c_i in c]
             test_targets = [actual_brain[c_i] for c_i in c]
+            assert test_targets[0].shape == (args.n_brain_features, )
         ### Decoding
         else:
             '''
@@ -515,9 +515,10 @@ for s in range(1, n_subjects+1):
 
             test_inputs = [actual_brain[c_i] for c_i in c]
             test_targets = [actual_vectors[c_i] for c_i in c]
+            assert train_targets[0].shape == (args.n_brain_features, )
 
-        print('Input shape: {}'.format(test_inputs[0].shape))
-        print('Target shape: {}'.format(test_targets[0].shape))
+        #print('Input shape: {}'.format(test_inputs[0].shape))
+        #print('Target shape: {}'.format(test_targets[0].shape))
         ### RSA
         if 'rsa' in args.methodology:
             wrong = 0.
