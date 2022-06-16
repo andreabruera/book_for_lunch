@@ -127,40 +127,39 @@ parser.add_argument('--analysis', required=True, \
                              'glm', 'whole_trial_flattened'], \
                     help='Average time points, or run classification'
                          'time point by time point?')
-parser.add_argument('--spatial_analysis', choices=['ROI', 'all', 
-                    'language_areas', 'fedorenko_language', 
-                    'control_semantics', 'general_semantics'], 
-                    required=True, \
+parser.add_argument('--spatial_analysis', choices=[ 
+                                                    'whole_brain', 
+                                                    'fedorenko_language', 
+                                                    'control_semantics', 
+                                                    'general_semantics'], 
+                                                    required=True, 
                     help = 'Specifies how features are to be selected')
 parser.add_argument('--feature_selection', choices=['fisher', 'stability'], required=True, \
                     help = 'Specifies how features are to be selected')
-parser.add_argument('--cross_validation', choices=['individual_trials', 'average_trials', 'replication'], \
-                    required=True, help = 'Specifies how features are to be selected')
 parser.add_argument('--n_folds', type=int, default=1000, \
                     help = 'Specifies how many folds to test on')
-parser.add_argument('--rsa', action='store_true', default=False, \
-                    help = 'Specifies whether to run the RSA analysis')
-parser.add_argument('--only_nouns', action='store_true', default=False, \
-                    help = 'Using as targets only the vectors for the nouns?')
-parser.add_argument('--encoding', action='store_true', default=False, \
+parser.add_argument('--method', choices=['encoding', 'decoding', 'rsa_encoding', 'rsa_decoding',
+                    required=True,
                     help = 'Encoding instead of decoding?')
 parser.add_argument('--ceiling', action='store_true', default=False, \
                     help = 'Ceiling instead of word vectors?')
-parser.add_argument('--vectors_folder', type=str, required=True, \
+parser.add_argument('--computational_model', type=str, required=True, \
+                                         choices=[
+                                         'fasttext', 'gpt2',
+                                         'familiarity', 
+                                         #'vector_familiarity', 
+                                         'concreteness', 
+                                         #'vector_concreteness', 
+                                         'frequency', 
+                                         #'vector_frequency',
+                                         'imageability', 
+                                         #'vector_imageability'
+                                         ], 
                     help = 'Specifies where the vectors are stored')
 parser.add_argument('--n_brain_features', type=int, required=True, \
                     help = 'How many brain features to use?')
-parser.add_argument('--vector_averaging', choices=['avg', 'maxpool'], 
-                    required=True, help='How to aggregate across mentions?')
-parser.add_argument('--target', choices=['familiarity', 'vector_familiarity', 
-                                         'concreteness', 'vector_concreteness', 
-                                         'word_vectors', 'pairwise_word_vectors', 
-                                         'frequency', 'vector_frequency',
-                                         'imageability', 'vector_imageability'], required=True, \
-                    help = 'Which model to look for?')
 parser.add_argument('--senses', action='store_true', default=False, \
                     help = 'Averaging different senses together?')
-
 args = parser.parse_args()
 
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
@@ -176,7 +175,25 @@ assert os.path.exists(maps_folder)
 map_names = [n for n in os.listdir(maps_folder)]
 map_results = dict()
 
-vectors = read_vectors(args)
+if args.computational_model in ['gpt2', 'fasttext']:
+    vectors = read_vectors(args)
+else:
+    ### Concreteness or other variables
+    with open('{}_stimuli_ratings.tsv'.format(args.dataset)) as i:
+        lines = [l.strip().split('\t') for l in i.readlines()]
+    if 'concreteness' in args.computational_model:
+        model_data = {l[0] : float(l[4]) for l in lines[1:]}
+    elif 'familiarity' in args.computational_model:
+        model_data = {l[0] : float(l[2]) for l in lines[1:]}
+    elif 'imageability' in args.computational_model:
+        model_data = {l[0] : float(l[6]) for l in lines[1:]}
+    elif 'frequency' in args.computational_model:
+        model_data = dict()
+        for l in lines[1:]:
+            with open(os.path.join('resources', 'book_for_lunch_sentences',
+                '{}.vector'.format(l[0].replace(' ', '_')))) as i:
+                length = len(list(i.readlines()))
+            model_data[l[0]] = numpy.log(length)
 
 ### Ceiling
 if args.ceiling:
@@ -215,6 +232,17 @@ if args.ceiling:
         else:
             full_sub_data, beg, end = load_subject_runs(runs, None)
             ### Averaging, keeping only one response per stimulus
+            if args.senses:
+                mapper = {tuple(s.replace("'", ' ').replace(' ', '_').split('_')) : '_'.join([s.split(' ')[-1], trial_infos['category'][s_i]]) for s_i, s in enumerate(trial_infos['trial_type'])}
+                senses = {v : [k for k, v_two in mapper.items() if v_two==v] for v in mapper.values()}
+                senses = {k : [' '.join([v_two[i] for i in [0, -1]]) for v_two in v] for k, v in senses.items()}
+                senses = {k : v for k, v in senses.items() if 'neg' not in k}
+                for sense, stimuli in senses.items():
+                    if len(stimuli) > 1:
+                        k = 2 if len(stimuli)==3 else 3
+                        random_indices = random.choices(range(5), k=k)
+                        for sense_stim in stimuli:
+                            full_sub_data[sense_stim] = numpy.array(full_sub_data[sense_stim])[random_indices]
             sub_data = {k : numpy.average(v, axis=0) for k, v in full_sub_data.items()}
         ceiling_data[s] = sub_data
 
@@ -266,6 +294,7 @@ for s in range(1, n_subjects+1):
     ### Left hemisphere
     #map_nifti = nilearn.image.load_img('region_maps/maps/left_hemisphere.nii')
     if args.spatial_analysis == 'language_areas':
+        raise RuntimeError('ROI removed!')
         map_path = os.path.join(maps_folder, 'language_areas.nii')
         assert os.path.exists(map_path)
         logging.info('Masking language areas...')
@@ -322,22 +351,28 @@ for s in range(1, n_subjects+1):
     ### Correcting vectors and brain data keys
     sub_data_keys = {tuple(k.replace("'", ' ').split()) : k  for k in full_sub_data.keys()}
     sub_data_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in sub_data_keys.items()}
-    full_sub_data = {k : full_sub_data[v] for k, v in sub_data_keys.items()}
+    full_sub_data = {k : full_sub_data[v] for k, v in sub_data_keys.items() if 'neg' not in k}
+    ### Pairwise similarities for concreteness etc
+    if args.computational_model not in ['fasttext', 'gpt2']:
+        vectors = {k : [abs(model_data[k]-model_data[k_two]) for k_two in full_sub_data.keys() if k_two!=k] for k in full_sub_data.keys()}
+    ### Ceiling
+    elif args.computational_model == 'ceiling':
+        current_ceiling = {k : [ceiling_data[sub][k] for sub in range(1, len(ceiling_data.keys())+1) if sub!=s] for k in ceiling_data[s].keys()}
+        current_ceiling = {k : numpy.average(v, axis=0) for k, v in current_ceiling.items()}
+        current_ceiling = {k : v[selected_dims] for k, v in current_ceiling.items()}
+        ceiling_keys = {tuple(k.replace("'", ' ').split()) : k  for k in current_ceiling.keys()}
+        ceiling_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in ceiling_keys.items()}
+        vectors = {k : current_ceiling[v] for k, v in ceiling_keys.items() if 'neg' not in k}
+
     vectors_keys = {tuple(k.replace("_", ' ').split()) : k  for k in vectors.keys()}
     vectors_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in vectors_keys.items()}
     vectors = {k : vectors[v] for k, v in vectors_keys.items()}
     full_sub_data = {k : v for k, v in full_sub_data.items() if k in vectors.keys()}
     vectors = {k : vectors[k] for k, v in full_sub_data.items()}
-    if args.senses:
-        mapper = {tuple(s.replace("'", ' ').replace(' ', '_').split('_')) : '_'.join([s.split(' ')[-1], trial_infos['category'][s_i]]) for s_i, s in enumerate(trial_infos['trial_type'])}
-        senses = {v : [k for k, v_two in mapper.items() if v_two==v] for v in mapper.values()}
-        senses = {k : [' '.join([v_two[i] for i in [0, -1]]) for v_two in v] for k, v in senses.items()}
-        senses = {k : v for k, v in senses.items() if 'neg' not in k}
 
     ### Balancing number of trials in the case of senses
     sub_data = dict()
     if args.senses:
-
         for sense, stimuli in senses.items():
             if len(stimuli) > 1:
                 k = 2 if len(stimuli)==3 else 3
@@ -364,14 +399,6 @@ for s in range(1, n_subjects+1):
     selected_dims = [k[0] for k in sorted_dims[:n_dims]]
     sub_data = {k : v[selected_dims] for k, v in sub_data.items()}
 
-    ### Ceiling
-    if args.ceiling:
-        current_ceiling = {k : [ceiling_data[sub][k] for sub in range(1, len(ceiling_data.keys())+1) if sub!=s] for k in ceiling_data[s].keys()}
-        current_ceiling = {k : numpy.average(v, axis=0) for k, v in current_ceiling.items()}
-        current_ceiling = {k : v[selected_dims] for k, v in current_ceiling.items()}
-        ceiling_keys = {tuple(k.replace("'", ' ').split()) : k  for k in current_ceiling.keys()}
-        ceiling_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in ceiling_keys.items()}
-        current_ceiling = {k : current_ceiling[v] for k, v in ceiling_keys.items() if 'neg' not in k}
     ### Limiting
     ### Taking away 'unclear' samples
     '''
@@ -386,7 +413,6 @@ for s in range(1, n_subjects+1):
             word_vec[k.split()[-1]].append(v)
         word_vec = {k : numpy.average(v, axis=0) for k, v in word_vec.items()}
         vectors = {k : word_vec[k.split()[-1]] for k in vectors.keys()}
-    '''
     if args.only_nouns:
         ### Collapsing to word
         word_vec = {k.split()[0] : list() for k in vectors.keys()}
@@ -395,36 +421,13 @@ for s in range(1, n_subjects+1):
         word_vec = {k : numpy.average(v, axis=0) for k, v in word_vec.items()}
         vectors = {k : word_vec[k.split()[0]] for k in vectors.keys()}
 
+    ### TODO: implement word vector to norm decoding
+    ### Use trial infos
+    if 'vector' in args.computational_model:
+        sub_data = vectors.copy()
+        vectors = {k : v for k, v in model_vecs.items()}
+    '''
 
-        ### Use trial infos
-    ### Concreteness or other variables
-    elif 'word_vectors' not in args.target:
-        with open('{}_stimuli_ratings.tsv'.format(args.dataset)) as i:
-            lines = [l.strip().split('\t') for l in i.readlines()]
-        if 'concreteness' in args.target:
-            model_data = {l[0] : float(l[4]) for l in lines[1:]}
-        elif 'familiarity' in args.target:
-            model_data = {l[0] : float(l[2]) for l in lines[1:]}
-        elif 'imageability' in args.target:
-            model_data = {l[0] : float(l[6]) for l in lines[1:]}
-        elif 'frequency' in args.target:
-            model_data = dict()
-            for l in lines[1:]:
-                with open(os.path.join('resources', 'book_for_lunch_sentences',
-                    '{}.vector'.format(l[0].replace(' ', '_')))) as i:
-                    length = len(list(i.readlines()))
-                model_data[l[0]] = numpy.log(length)
-        #model_sims = [abs(model_data[c[0]]-model_data[c[1]]) for c in combs]
-        ### Pairwise similarities
-        model_vecs = {k : [abs(model_data[k]-model_data[k_two]) for k_two in vectors.keys() if k_two!=k] for k in vectors.keys()}
-        if 'vector' not in args.target:
-            vectors = {k : v for k, v in model_vecs.items()}
-        else:
-            sub_data = vectors.copy()
-            vectors = {k : v for k, v in model_vecs.items()}
-
-        ### Individual values
-        #vectors = model_data.copy()
     accuracies = list()
 
     if args.senses:
@@ -436,20 +439,13 @@ for s in range(1, n_subjects+1):
         for sense, stimuli in senses.items():
             if len(stimuli) == 1:
                 actual_brain[stimuli[0]] = sub_data[stimuli[0]]
-
-                if args.ceiling:
-                    actual_vectors[stimuli[0]] = current_ceiling[stimuli[0]]
-                else:
-                    actual_vectors[stimuli[0]] = vectors[stimuli[0]]
+                actual_vectors[stimuli[0]] = vectors[stimuli[0]]
             else:
                 ### Averaging brain responses
                 data_avg = numpy.average([sub_data[s] for s in stimuli], axis=0)
                 actual_brain[stimuli[0]] = data_avg
 
-                if args.ceiling:
-                    vec_avg = numpy.average([current_ceiling[s] for s in stimuli], axis=0)
-                else:
-                    vec_avg = numpy.average([vectors[s] for s in stimuli], axis=0)
+                vec_avg = numpy.average([vectors[s] for s in stimuli], axis=0)
                 actual_vectors[stimuli[0]] = vec_avg
     else:
         actual_brain = sub_data.copy()
@@ -461,14 +457,14 @@ for s in range(1, n_subjects+1):
     ### RSA decoding
     if args.rsa:
         logging.info('Computing RSA vectors...')
-        actual_brain = {k : [scipy.stats.spearmanr(v, v_two)[0] for k_two, v_two in actual_brain.items() if k!=k_two] for k, v in actual_brain.items()}
-        if args.target == 'word_vectors':
-            actual_vectors = {k : [scipy.stats.spearmanr(v, v_two)[0] for k_two, v_two in actual_vectors.items() if k!=k_two] for k, v in actual_vectors.items()}
-    if args.target == 'pairwise_word_vectors':
+        actual_brain = {k : [scipy.stats.pearsonr(v, v_two)[0] for k_two, v_two in actual_brain.items() if k!=k_two] for k, v in actual_brain.items()}
+        actual_vectors = {k : [scipy.stats.pearsonr(v, v_two)[0] for k_two, v_two in actual_vectors.items() if k!=k_two] for k, v in actual_vectors.items()}
+    ### TODO: implement pairwise word vectors
+    '''
+    if args.computational_model == 'pairwise_word_vectors':
         actual_vectors = {k : [scipy.stats.spearmanr(v, v_two)[0] for k_two, v_two in actual_vectors.items() if k!=k_two] for k, v in actual_vectors.items()}
+    '''
     #vectors = {k : vectors[k] for k, v in sub_data.items()}
-    if args.ceiling and args.target == 'word_vectors' and not args.senses:
-        actual_vectors = current_ceiling.copy()
     ### Standardization
     #standardized_input = sklearn.preprocessing.StandardScaler().fit_transform(numpy.array(list(actual_brain.values())))
     numpy_target = numpy.array(list(actual_vectors.values()))
@@ -491,7 +487,7 @@ for s in range(1, n_subjects+1):
     combs = list(itertools.combinations(list(actual_vectors.keys()), 2))
     for c in tqdm(combs):
         ### Encoding
-        if args.encoding:
+        if 'encoding' in args.method:
             ### PCA reduction of vectors
             train_inputs = [v for k, v in actual_vectors.items() if k not in c]
             train_targets = [v for k, v in actual_brain.items() if k not in c]
@@ -516,13 +512,13 @@ for s in range(1, n_subjects+1):
             test_targets = [actual_vectors[c_i] for c_i in c]
 
             ### RSA
-            if args.rsa:
+            if 'rsa' in args.method:
                 wrong = 0.
                 for idx_one, idx_two in [(0, 1), (1, 0)]:
-                    wrong += scipy.stats.spearmanr(test_inputs[idx_one], test_targets[idx_two])[0]
+                    wrong += scipy.stats.pearsonr(test_inputs[idx_one], test_targets[idx_two])[0]
                 correct = 0.
                 for idx_one, idx_two in [(0, 0), (1, 1)]:
-                    correct += scipy.stats.spearmanr(test_inputs[idx_one], test_targets[idx_two])[0]
+                    correct += scipy.stats.pearsonr(test_inputs[idx_one], test_targets[idx_two])[0]
                 if correct > wrong:
                     accuracies.append(1)
                 else:
@@ -536,18 +532,18 @@ for s in range(1, n_subjects+1):
                 assert len(predictions) == len(test_targets)
                 wrong = 0.
                 for idx_one, idx_two in [(0, 1), (1, 0)]:
-                    wrong += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
+                    wrong += scipy.stats.pearsonr(predictions[idx_one], test_targets[idx_two])[0]
                     '''
-                    if args.target == 'word_vectors':
+                    if args.computational_model == 'word_vectors':
                         wrong += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
                     else:
                         wrong -= abs(predictions[idx_one] - test_targets[idx_two])
                     '''
                 correct = 0.
                 for idx_one, idx_two in [(0, 0), (1, 1)]:
-                    correct += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
+                    correct += scipy.stats.pearsonr(predictions[idx_one], test_targets[idx_two])[0]
                     '''
-                    if args.target == 'word_vectors':
+                    if args.computational_model == 'word_vectors':
                         correct += scipy.stats.spearmanr(predictions[idx_one], test_targets[idx_two])[0]
                     else:
                         correct -= abs(predictions[idx_one] - test_targets[idx_two])
@@ -600,22 +596,16 @@ for s in range(1, n_subjects+1):
         all_results[k].append(numpy.average(v))
     decoding_results.append(accuracy)
 
-output_folder = os.path.join('results', args.cross_validation, 
-        #'{}_{}_simple_decoding_rsa_{}_only_nouns_{}'.format(
-        '{}_{}_simple_decoding_rsa_{}_only_verbs_{}'.format(
-                             n_dims, args.vectors_folder.split('/')[1], args.rsa, args.only_nouns), \
-                             args.dataset, args.analysis, 
-                             'pairwise', 
+output_folder = os.path.join(
+                             'results',
+                             'vector_{}'.format(args.method),
+                             args.analysis, 
+                             'senses_{}'.format(args.senses)
+                             '{}_{}'.format(args.feature_selection, n_dims), 
+                             args.computational_model, 
                              args.spatial_analysis,
-                             args.feature_selection, args.vector_averaging,
+                             args.dataset, 
                              )
-if args.ceiling:
-    output_folder = output_folder.replace('simple_decoding', 'ceiling_decoding')
-if args.senses:
-    output_folder = output_folder.replace('decoding', 'senses_decoding')
-output_folder = output_folder.replace('decoding', '{}_decoding'.format(args.target))
-if args.encoding:
-    output_folder = output_folder.replace('decoding', 'encoding')
 os.makedirs(output_folder, exist_ok=True)
 with open(os.path.join(output_folder, 'accuracies.results'), 'w') as o:
     o.write('overall_accuracy\t')
