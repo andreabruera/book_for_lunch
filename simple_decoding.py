@@ -163,6 +163,9 @@ parser.add_argument('--senses', action='store_true', default=False, \
                     help = 'Averaging different senses together?')
 args = parser.parse_args()
 
+if args.analysis == 'glm':
+    raise RuntimeError('The implementation of the GLM is not correct')
+
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 numpy.seterr(all='raise')
 
@@ -197,6 +200,32 @@ else:
                 length = len(list(i.readlines()))
             model_data[l[0]] = numpy.log(length)
 
+### Loading ROI maps
+if args.spatial_analysis == 'general_semantics':
+    map_path = os.path.join(maps_folder, 'General_semantic_cognition_ALE_result.nii')
+    assert os.path.exists(map_path)
+    logging.info('Masking general semantics areas...')
+    map_nifti = nilearn.image.load_img(map_path)
+    map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+elif args.spatial_analysis == 'control_semantics':
+    map_path = os.path.join(maps_folder, 'semantic_control_ALE_result.nii')
+    assert os.path.exists(map_path)
+    logging.info('Masking control semantics areas...')
+    map_nifti = nilearn.image.load_img(map_path)
+    map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+elif args.spatial_analysis == 'fedorenko_language':
+    map_path = os.path.join(maps_folder, 'allParcels_language_SN220.nii')
+    assert os.path.exists(map_path)
+    logging.info('Masking Fedorenko lab\'s language areas...')
+    map_nifti = nilearn.image.load_img(map_path)
+    map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+else:
+    ### Load later
+    #map_nifti = nilearn.masking.compute_brain_mask(runs[0][0])
+    #map_nifti = nilearn.datasets.load_mni152_brain_mask()
+    pass
+
+
 ### Ceiling
 if args.computational_model == 'ceiling':
     ceiling_data = dict()
@@ -227,25 +256,43 @@ if args.computational_model == 'ceiling':
             single_run = nilearn.image.clean_img(single_run)
             runs.append((single_run, trial_infos))
 
+        if args.spatial_analysis == 'whole_brain':
+            map_nifti = nilearn.masking.compute_brain_mask(runs[0][0])
+        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
+
         ### GLM
         if args.analysis == 'glm':
-            raise RuntimeError('Still to implement')
+            numpy.seterr(all='warn')
+
+            fmri_glm = FirstLevelModel(t_r=1, 
+                                       standardize=False, 
+                                       signal_scaling=False,
+                                       smoothing_fwhm=None, 
+                                       mask_img=map_nifti)
+
+            glm_events = [pandas.DataFrame.from_dict(r[1]).drop('category', axis=1) for r in runs]
+
+            fmri_glm = fmri_glm.fit([r[0] for r in runs], glm_events)
+
+            full_sub_data = {k : fmri_glm.compute_contrast(k) for k in set(glm_events[0]['trial_type']) if 'neg' not in k}
+            full_sub_data = {k : nilearn.masking.apply_mask(v, map_nifti).T for k, v in full_sub_data.items()}
+            numpy.seterr(all='raise')
 
         else:
             full_sub_data, beg, end = load_subject_runs(runs, None)
-            ### Averaging, keeping only one response per stimulus
-            if args.senses:
-                mapper = {tuple(s.replace("'", ' ').replace(' ', '_').split('_')) : '_'.join([s.split(' ')[-1], trial_infos['category'][s_i]]) for s_i, s in enumerate(trial_infos['trial_type'])}
-                senses = {v : [k for k, v_two in mapper.items() if v_two==v] for v in mapper.values()}
-                senses = {k : [' '.join([v_two[i] for i in [0, -1]]) for v_two in v] for k, v in senses.items()}
-                senses = {k : v for k, v in senses.items() if 'neg' not in k}
-                for sense, stimuli in senses.items():
-                    if len(stimuli) > 1:
-                        k = 2 if len(stimuli)==3 else 3
-                        random_indices = random.choices(range(5), k=k)
-                        for sense_stim in stimuli:
-                            full_sub_data[sense_stim] = numpy.array(full_sub_data[sense_stim])[random_indices]
-            sub_data = {k : numpy.average(v, axis=0) for k, v in full_sub_data.items()}
+        ### Averaging, keeping only one response per stimulus
+        if args.senses:
+            mapper = {tuple(s.replace("'", ' ').replace(' ', '_').split('_')) : '_'.join([s.split(' ')[-1], trial_infos['category'][s_i]]) for s_i, s in enumerate(trial_infos['trial_type'])}
+            senses = {v : [k for k, v_two in mapper.items() if v_two==v] for v in mapper.values()}
+            senses = {k : [' '.join([v_two[i] for i in [0, -1]]) for v_two in v] for k, v in senses.items()}
+            senses = {k : v for k, v in senses.items() if 'neg' not in k}
+            for sense, stimuli in senses.items():
+                if len(stimuli) > 1:
+                    k = 2 if len(stimuli)==3 else 3
+                    random_indices = random.choices(range(5), k=k)
+                    for sense_stim in stimuli:
+                        full_sub_data[sense_stim] = numpy.array(full_sub_data[sense_stim])[random_indices]
+        sub_data = {k : numpy.average(v, axis=0) for k, v in full_sub_data.items()}
         ceiling_data[s] = sub_data
 
 
@@ -290,45 +337,20 @@ for s in range(1, n_subjects+1):
         single_run = nilearn.image.clean_img(single_run)
         runs.append((single_run, trial_infos))
 
+    if args.spatial_analysis == 'whole_brain':
+        map_nifti = nilearn.masking.compute_brain_mask(runs[0][0])
+    map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
+
     sub_results = collections.defaultdict(list)
     logging.info('Masking using Fisher feature selection')
     #raise RuntimeError('Part to be implemented')
     ### Left hemisphere
     #map_nifti = nilearn.image.load_img('region_maps/maps/left_hemisphere.nii')
-    if args.spatial_analysis == 'language_areas':
-        raise RuntimeError('ROI removed!')
-        map_path = os.path.join(maps_folder, 'language_areas.nii')
-        assert os.path.exists(map_path)
-        logging.info('Masking language areas...')
-        map_nifti = nilearn.image.load_img(map_path)
-    elif args.spatial_analysis == 'general_semantics':
-        map_path = os.path.join(maps_folder, 'General_semantic_cognition_ALE_result.nii')
-        assert os.path.exists(map_path)
-        logging.info('Masking general semantics areas...')
-        map_nifti = nilearn.image.load_img(map_path)
-        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
-        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
-    elif args.spatial_analysis == 'control_semantics':
-        map_path = os.path.join(maps_folder, 'semantic_control_ALE_result.nii')
-        assert os.path.exists(map_path)
-        logging.info('Masking control semantics areas...')
-        map_nifti = nilearn.image.load_img(map_path)
-        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
-        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
-    elif args.spatial_analysis == 'fedorenko_language':
-        map_path = os.path.join(maps_folder, 'allParcels_language_SN220.nii')
-        assert os.path.exists(map_path)
-        logging.info('Masking Fedorenko lab\'s language areas...')
-        map_nifti = nilearn.image.load_img(map_path)
-        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
-        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
-    else:
-        #map_nifti = None
-        map_nifti = nilearn.masking.compute_brain_mask(runs[0][0])
     ### GLM
     if args.analysis == 'glm':
         logging.info('Now estimating BOLD responses using GLM '\
                      'for subject {}'.format(s))
+        numpy.seterr(all='warn')
 
         fmri_glm = FirstLevelModel(t_r=1, 
                                    standardize=False, 
@@ -336,7 +358,7 @@ for s in range(1, n_subjects+1):
                                    smoothing_fwhm=None, 
                                    mask_img=map_nifti)
 
-        glm_events = [pandas.DataFrame.from_dict(r[1]) for r in runs]
+        glm_events = [pandas.DataFrame.from_dict(r[1]).drop('category', axis=1) for r in runs]
 
         fmri_glm = fmri_glm.fit([r[0] for r in runs], glm_events)
 
@@ -344,10 +366,33 @@ for s in range(1, n_subjects+1):
         full_sub_data = {k : nilearn.masking.apply_mask(v, map_nifti).T for k, v in full_sub_data.items()}
         beg = 4
         end = 11
+        numpy.seterr(all='raise')
+        dimensionality = list(set([v.shape[0] for k, v in full_sub_data.items()]))[0]
 
     else:
 
         full_sub_data, beg, end = load_subject_runs(runs, map_nifti)
+        dimensionality = list(set([vol.shape[0] for k, v in full_sub_data.items() for vol in v]))[0]
+
+    ### Feature selection - reading voxel scores
+
+    ### Extracting 5k random indices
+    #random_indices = random.sample(list(range(dimensionality)), k=10000)
+    #sub_data = {k : v[random_indices] for k, v in sub_data.items()}
+    feature_analysis = 'whole_trial' if args.analysis == 'glm' else args.analysis
+    feature_folder = os.path.join('voxel_selection',
+                           '{}_scores'.format(args.feature_selection), 
+                           '{}_to_{}'.format(beg, end),
+                           args.dataset, feature_analysis, args.spatial_analysis, 
+                           'sub-{:02}.{}'.format(s, args.feature_selection))
+    with open(feature_folder) as i:
+        lines = numpy.array([l.strip().split('\t') for l in i.readlines()][0], dtype=numpy.float64)
+    assert len(lines) == dimensionality
+    sorted_dims = sorted(list(enumerate(lines)), key=lambda item : item[1], reverse=True)
+    n_dims = args.n_brain_features
+    selected_dims = [k[0] for k in sorted_dims[:n_dims]]
+
+    ### Aligning inputs and targets
 
     ### Reduce keys to actually present
     ### Correcting vectors and brain data keys
@@ -372,6 +417,8 @@ for s in range(1, n_subjects+1):
     full_sub_data = {k : v for k, v in full_sub_data.items() if k in vectors.keys()}
     vectors = {k : vectors[k] for k, v in full_sub_data.items()}
 
+    ### Aggregating senses if needed
+
     ### Balancing number of trials in the case of senses
     sub_data = dict()
     if args.senses:
@@ -382,24 +429,11 @@ for s in range(1, n_subjects+1):
                 for sense_stim in stimuli:
                     sub_data[sense_stim] = numpy.array(full_sub_data[sense_stim])[random_indices]
     sub_data = {k : numpy.average(v, axis=0) if len(v)<10 else v for k, v in full_sub_data.items()}
-    print([len(v) for v in sub_data.values()])
-    dimensionality = list(set([v.shape[0] for k, v in sub_data.items()]))[0]
-    ### Extracting 5k random indices
-    #random_indices = random.sample(list(range(dimensionality)), k=10000)
-    #sub_data = {k : v[random_indices] for k, v in sub_data.items()}
-    feature_analysis = 'whole_trial' if args.analysis == 'glm' else args.analysis
-    feature_folder = os.path.join('voxel_selection',
-                           '{}_scores'.format(args.feature_selection), 
-                           '{}_to_{}'.format(beg, end),
-                           args.dataset, feature_analysis, args.spatial_analysis, 
-                           'sub-{:02}.{}'.format(s, args.feature_selection))
-    with open(feature_folder) as i:
-        lines = numpy.array([l.strip().split('\t') for l in i.readlines()][0], dtype=numpy.float64)
-    assert len(lines) == dimensionality
-    sorted_dims = sorted(list(enumerate(lines)), key=lambda item : item[1], reverse=True)
-    n_dims = args.n_brain_features
-    selected_dims = [k[0] for k in sorted_dims[:n_dims]]
+    old_dims = set([len(v) for v in sub_data.values()])
+    ### Applying feature selection
     sub_data = {k : v[selected_dims] for k, v in sub_data.items()}
+    new_dims = set([len(v) for v in sub_data.values()])
+    print('Reduced dimensionality from {} to {} features'.format(old_dims, new_dims))
 
     ### Limiting
     ### Taking away 'unclear' samples
