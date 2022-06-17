@@ -282,6 +282,10 @@ if args.computational_model == 'ceiling':
 
         else:
             full_sub_data, beg, end = load_subject_runs(runs, None)
+        ### Correcting phrase keys
+        sub_data_keys = {tuple(k.replace("'", ' ').split()) : k  for k in full_sub_data.keys()}
+        sub_data_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in sub_data_keys.items()}
+        full_sub_data = {k : full_sub_data[v] for k, v in sub_data_keys.items() if 'neg' not in k}
         ### Averaging, keeping only one response per stimulus
         if args.senses:
             mapper = {tuple(s.replace("'", ' ').replace(' ', '_').split('_')) : '_'.join([s.split(' ')[-1], trial_infos['category'][s_i]]) for s_i, s in enumerate(trial_infos['trial_type'])}
@@ -429,6 +433,10 @@ for s in range(1, n_subjects+1):
     ### Balancing number of trials in the case of senses
     sub_data = dict()
     if args.senses:
+        mapper = {tuple(s.replace("'", ' ').replace(' ', '_').split('_')) : '_'.join([s.split(' ')[-1], trial_infos['category'][s_i]]) for s_i, s in enumerate(trial_infos['trial_type'])}
+        senses = {v : [k for k, v_two in mapper.items() if v_two==v] for v in mapper.values()}
+        senses = {k : [' '.join([v_two[i] for i in [0, -1]]) for v_two in v] for k, v in senses.items()}
+        senses = {k : v for k, v in senses.items() if 'neg' not in k}
         for sense, stimuli in senses.items():
             if len(stimuli) > 1:
                 k = 2 if len(stimuli)==3 else 3

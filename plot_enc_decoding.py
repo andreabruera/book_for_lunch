@@ -35,19 +35,19 @@ for root, direc, filez in os.walk(folder):
             spatial_analysis = relevant_details[-2]
             if spatial_analysis not in whole_collector[dataset].keys():
                 whole_collector[dataset][spatial_analysis] = dict()
-            computational_model = relevant_details[-3]
-            if computational_model not in whole_collector[dataset][spatial_analysis].keys():
-                whole_collector[dataset][spatial_analysis][computational_model] = dict()
-            features = relevant_details[-4]
-            if features not in whole_collector[dataset][spatial_analysis][computational_model].keys():
-                whole_collector[dataset][spatial_analysis][computational_model][features] = dict()
-            senses = relevant_details[-5]
-            if senses not in whole_collector[dataset][spatial_analysis][computational_model][features].keys():
-                whole_collector[dataset][spatial_analysis][computational_model][features][senses] = dict()
-            analysis = relevant_details[-6]
-            if analysis not in whole_collector[dataset][spatial_analysis][computational_model][features][senses].keys():
-                whole_collector[dataset][spatial_analysis][computational_model][features][senses][analysis] = dict()
             methodology = relevant_details[-7]
+            if methodology not in whole_collector[dataset][spatial_analysis].keys():
+                whole_collector[dataset][spatial_analysis][methodology] = dict()
+            features = relevant_details[-4]
+            if features not in whole_collector[dataset][spatial_analysis][methodology].keys():
+                whole_collector[dataset][spatial_analysis][methodology][features] = dict()
+            senses = relevant_details[-5]
+            if senses not in whole_collector[dataset][spatial_analysis][methodology][features].keys():
+                whole_collector[dataset][spatial_analysis][methodology][features][senses] = dict()
+            analysis = relevant_details[-6]
+            if analysis not in whole_collector[dataset][spatial_analysis][methodology][features][senses].keys():
+                whole_collector[dataset][spatial_analysis][methodology][features][senses][analysis] = dict()
+            computational_model = relevant_details[-3]
             '''
              'results',
              'vector_{}'.format(args.methodology),
@@ -61,18 +61,19 @@ for root, direc, filez in os.walk(folder):
             '''
             with open(os.path.join(root, fil)) as i:
                 lines = [l.strip().split('\t') for l in i.readlines()]
-            assert methodology not in whole_collector[dataset][spatial_analysis][computational_model][features][senses][analysis].keys()
-            whole_collector[dataset][spatial_analysis][computational_model][features][senses][analysis][methodology] = lines
+            assert computational_model not in whole_collector[dataset][spatial_analysis][methodology][features][senses][analysis].keys()
+            whole_collector[dataset][spatial_analysis][methodology][features][senses][analysis][computational_model] = lines
 
 ### Plotting main violin plots
 
+'''
 for dataset, d_data in whole_collector.items():
     for spatial_analysis, s_data in d_data.items():
-        for computational_model, c_data in s_data.items():
-            for features, f_data in c_data.items():
+        for methodology, m_data in s_data.items():
+            for features, f_data in m_data.items():
                 for senses, sense_data in f_data.items():
                     for analysis, a_data in sense_data.items():
-                        for methodology, lines in a_data.items():
+                        for computational_model, lines in a_data.items():
 
                             if 'book' in dataset:
                                 if 'fedorenko' in spatial_analysis:
@@ -132,7 +133,7 @@ for dataset, d_data in whole_collector.items():
 
                             ### Plotting the ceiling, if available
                             try:
-                                ceiling_data = whole_collector[dataset][spatial_analysis]['ceiling'][features][senses][analysis][methodology]
+                                ceiling_data = whole_collector[dataset][spatial_analysis][methodology][features][senses][analysis]['ceiling']
                                 ceil_header = ceiling_data[0]
                                 ceil_data = numpy.array(ceiling_data[1:], dtype=numpy.float32)
                                 ceil_collector = {h : [d[h_i] for d in ceil_data] for h_i, h in enumerate(ceil_header)}
@@ -308,7 +309,7 @@ for dataset, d_data in whole_collector.items():
 
                             ### Plotting the ceiling, if available
                             try:
-                                ceiling_data = whole_collector[dataset][spatial_analysis]['ceiling'][features][senses][analysis][methodology]
+                                ceiling_data = whole_collector[dataset][spatial_analysis][methodology][features][senses][analysis]['ceiling']
                                 ceil_header = ceiling_data[0]
                                 ceil_data = numpy.array(ceiling_data[1:], dtype=numpy.float32)
                                 ceil_collector = {h : [d[h_i] for d in ceil_data] for h_i, h in enumerate(ceil_header)}
@@ -330,6 +331,7 @@ for dataset, d_data in whole_collector.items():
                                                 color='lightgray', alpha=0.3)
                             except KeyError:
                                 pass
+
                             ps = list()
                             avgs = list()
                             mdns = list()
@@ -416,3 +418,253 @@ for dataset, d_data in whole_collector.items():
                             pyplot.savefig(os.path.join(out_path))
                             pyplot.clf()
                             pyplot.close()
+'''
+
+### Bar plots for full comparisons
+for dataset, d_data in whole_collector.items():
+    for spatial_analysis, s_data in d_data.items():
+        for methodology, m_data in s_data.items():
+            for features, f_data in m_data.items():
+                for senses, sense_data in f_data.items():
+                    for analysis, a_data in sense_data.items():
+
+                        fig, ax = pyplot.subplots(figsize=(20, 11), constrained_layout=True)
+
+                        ### Setting the title
+                        if 'decoding' in methodology:
+                            title = 'Comparing decoding performance from fMRI to {}\nusing {} features from {} - {}'.format(
+                                     computational_model, features.split('_')[1], analysis, spatial_analysis)
+                        elif 'encoding' in methodology:
+                            title = 'Comparing decoding performance from {} to fMRI\nusing {} features from {} - {}'.format(
+                                     computational_model, features.split('_')[1], analysis, spatial_analysis)
+                        if 'True' in senses:
+                            title =  '{}\naggregating phrases for word senses'.format(title)
+                        title = title.replace('_', ' ')
+                        ax.set_title(title, fontsize=20, pad=40)
+
+                        ### Creating the output path
+                        out_path  = os.path.join('plots', methodology,
+                                                 'models_comparisons', 
+                                                 analysis, 
+                                                 senses, features, dataset,
+                                                 )
+                        os.makedirs(out_path, exist_ok=True)
+                        out_path = os.path.join(out_path, '{}.jpg'.format(spatial_analysis)) 
+
+                        ### Setting colors
+                        if 'book' in dataset:
+                            if 'fedorenko' in spatial_analysis:
+                                cmap = 'BuGn_r'
+                            elif 'general' in spatial_analysis:
+                                cmap = 'YlGnBu_r'
+                            elif 'control' in spatial_analysis:
+                                cmap = 'YlOrBr_r'
+                            else:
+                                cmap = 'RdPu_r'
+                        else:
+                            cmap = 'bone'
+
+                        ### Comparing 3 models
+                        models = ['concreteness', 'gpt2', 'fasttext']
+                        models_collector = dict()
+                        for m in models:
+                            lines = a_data[m]
+
+                            header = lines[0]
+                            data = lines[1:]
+
+                            collector = {h : [d[h_i] for d in data] for h_i, h in enumerate(header)}
+                            models_collector[m] = dict()
+
+                            possibilities = ['dot', 'verb', 'simple']
+                            builder = ['_concrete', '_abstract']
+
+                            for poss in possibilities:
+                                keyz = ['overall_accuracy',
+                                        'abstract_concrete',
+                                        poss,
+                                        '{}{}_{}{}'.format(poss, builder[1], poss, builder[0])]
+                                for h in keyz:
+                                    try:
+                                        models_collector[m][h] = collector[h]
+                                    except KeyError:
+                                        continue
+
+                        positions = list(range(len(models_collector[m].keys())))
+
+                        ### Plotting the ceiling, if available
+                        try:
+                            ceiling_data = whole_collector[dataset][spatial_analysis][methodology][features][senses][analysis]['ceiling']
+                            ceil_header = ceiling_data[0]
+                            ceil_data = numpy.array(ceiling_data[1:], dtype=numpy.float32)
+                            ceil_collector = {h : [d[h_i] for d in ceil_data] for h_i, h in enumerate(ceil_header)}
+                            ceiling_collector = dict()
+                            for poss in possibilities:
+                                keyz = ['overall_accuracy',
+                                        'abstract_concrete',
+                                        poss,
+                                        '{}{}_{}{}'.format(poss, builder[1], poss, builder[0])]
+                                for h in keyz:
+                                    try:
+                                        ceiling_collector[h] = numpy.average(ceil_collector[h])
+                                    except KeyError:
+                                        continue
+                            ceiling_pos = positions.copy()
+                            ceiling_pos[0] = -.5
+                            ceiling_pos[-1] = len(ceiling_pos) - .5
+                            ax.fill_between(ceiling_pos, [v for k, v in ceiling_collector.items()], 
+                                            [1. for i in ceiling_collector.keys()],
+                                            color='lightgray', alpha=0.3)
+                        except KeyError:
+                            pass
+
+                        ### Plotting
+
+                        color_map = {'concreteness':'deeppink', 'gpt2':'teal', 'fasttext':'orange'}
+                        scat_map = {'concreteness':'mediumvioletred', 
+                                     'gpt2':'darkslategrey', 'fasttext':'peru'}
+
+                        corrections = {0 : -.2, 1 : 0, 2: .2}
+                        for m_i, model in enumerate(models_collector.items()):
+                            model_data = model[1]
+                            model = model[0]
+                            for pos, data in zip(positions, model_data.items()):
+                                data = numpy.array(data[1], dtype=numpy.float32)
+                                scat_data = sorted(data, key=lambda item : abs(numpy.average(data)-item))
+                                ### Dividing the participants
+                                beg_ends = [(0, 5), (5, 10), (10, 17)]
+                                scatter_corrections = {0:-.033, 1:0, 2:.033}
+                                for b_i, beg_end in enumerate(beg_ends):
+                                    ax.scatter(x=[pos+corrections[m_i]+scatter_corrections[b_i] for d in data[beg_end[0]:beg_end[1]]],
+                                               y=data[beg_end[0]:beg_end[1]], zorder=2, 
+                                               edgecolors='black', linewidths=0.33,
+                                               c=scat_map[model], s=10.)
+                                ax.bar(x=pos+corrections[m_i], height=numpy.average(data),
+                                       width = 0.166, align='center', zorder=1,
+                                       label=model, color=color_map[model], alpha=1.-(pos*0.1))
+
+                        ax.set_xticks(positions)
+                        x_ticks = [t.replace('concrete', 'object')\
+                                    .replace('abstract', 'information')\
+                                    .replace('_', ' ').capitalize() for t in models_collector[model].keys()]
+                        x_ticks_final = list()
+                        for x_t in x_ticks:
+                            length = len(x_t.split())
+                            if length == 1 or 'all' in x_t:
+                                x_ticks_final.append('Aggregate\n{}'.format(x_t).replace('accuracy', ''))
+                            elif length == 2:
+                                x_ticks_final.append(x_t.replace(' ', ' vs '))
+                            else:
+                                final_x = [x_t.split()[i] for i in [0,1,3]]
+                                final_x.insert(1, ' ')
+                                final_x.insert(3, 'vs')
+                                x_ticks_final.append(' '.join(final_x))
+
+                        x_ticks_final = [re.sub('\s+', ' ', t) for t in x_ticks_final]
+                        x_ticks_final = [t.replace(' ', '\n') for t in x_ticks_final]
+                        #x_ticks_final = [t.replace('Dot', 'Coercion').replace('Verb', 'Transparent').replace('Simple', 'Light Verb') for t in x_ticks_final]
+                        x_ticks_final = [t.replace('Dot', '').replace('Verb', '').replace('Simple', '').strip() for t in x_ticks_final]
+                        ax.set_xticklabels(x_ticks_final,
+                                           #rotation=45,
+                                           ha='center',
+                                           fontsize=20,
+                                           #fontweight='bold'
+                                           )
+                        ax.hlines(xmin=-.5, xmax=max(positions)+0.4, y=0.5, alpha=0.5, color='darkgray', linestyle='dashdot')
+                        ax.set_ylabel('Leave-2-out accuracy', fontsize=20, 
+                                      fontweight='bold', y=0.62, ha='center',
+                                      labelpad=8.)
+                        ax.text(x=.5, y=0.95, s='Overall', fontsize=18,
+                                fontweight='bold', ha='center', va='center')
+                        ax.text(x=2.5, y=0.95, s='Coercion', fontsize=18,
+                                fontweight='bold', ha='center', va='center')
+                        ax.text(x=4.5, y=0.95, s='Transparent', fontsize=18,
+                                fontweight='bold', ha='center', va='center')
+                        ax.text(x=6.5, y=0.95, s='Light Verbs', fontsize=18,
+                                fontweight='bold', ha='center', va='center')
+                        ax.vlines(x=[1.5, 3.5, 5.5], ymin=0.1, ymax=0.9, alpha=0.4, 
+                                  color='gray')
+                        ax.scatter(x=.85, y=1.025, s=300, color=color_map['concreteness'], marker='s')
+                        ax.text(x=.95, y=1.025, s='Concreteness vectors',fontsize=18,
+                                va='center', ha='left')
+                        ax.scatter(x=3.1, y=1.025, s=300, color=color_map['gpt2'], marker='s')
+                        ax.text(x=3.2, y=1.025, s='Italian GPT-2',fontsize=18,
+                                va='center', ha='left')
+                        ax.scatter(x=5.1, y=1.025, s=300, color=color_map['fasttext'], marker='s')
+                        ax.text(x=5.2, y=1.025, s='Italian fasttext',fontsize=18,
+                                va='center', ha='left')
+
+                        ax.spines['right'].set_visible(False)
+                        ax.spines['top'].set_visible(False)
+                        ax.spines['bottom'].set_visible(False)
+                        ax.spines['left'].set_visible(False)
+                        ax.tick_params('y', labelsize=15, length=0)
+                        ax.tick_params('y', length=0)
+                        ax.hlines(xmin=-.4, xmax=max(positions)+0.5, y=[0.3, 0.4, 0.6, 0.7, 0.8, 0.9, 1.], 
+                                  alpha=0.2, color='darkgray', linestyle='dashdot')
+                        ax.set_ylim(bottom=0.2, top=1.05)
+
+                        ### Computing ps, and then fdr corrections
+                        scores_collector = list()
+                        model_collector = list()
+                        for k, v in models_collector.items():
+                            for k_two, data in v.items():
+                                p = scipy.stats.ttest_1samp(numpy.array(data, dtype=numpy.float32),
+                                                            popmean=0.5, alternative='greater')
+                                scores_collector.append(p[1])
+                                model_collector.append(k)
+                        corr_ps = mne.stats.fdr_correction(scores_collector)[1]
+                        corrected_collector = dict()
+                        for m, p in zip(model_collector, corr_ps):
+                            if m not in corrected_collector.keys():
+                                corrected_collector[m] = list()
+                            corrected_collector[m].append(p)
+                        corrections = {'concreteness' : -.2, 'gpt2' : 0, 'fasttext': .2}
+                        for model, model_results in corrected_collector.items():
+                            for pos, p in zip(positions, model_results):
+                                if p <= 0.05:
+                                    ax.scatter(x=pos+corrections[model], y=0.23, 
+                                               marker='*', s=70, c='black', zorder=2)
+                                if p <= 0.005:
+                                    ax.scatter(x=pos+corrections[model], y=0.25, 
+                                               marker='*', s=70, c='black', zorder=2)
+                                if p <= 0.0005:
+                                    ax.scatter(x=pos+corrections[model], y=0.27, 
+                                               marker='*', s=70, c='black',
+                                               zorder=2)
+                        
+                        ### pairwise comparisons among models
+                        scores_collector = dict()
+                        for k, v in models_collector.items():
+                            if k not in scores_collector.keys():
+                                scores_collector[k] = list()
+                            for k_two, data in v.items():
+                                scores_collector[k].append(numpy.array(data, dtype=numpy.float32))
+                        ### p-values for concreteness
+                        p_val = dict()
+                        for m in ['concreteness', 'gpt2']: 
+                            for r_i, r in enumerate(scores_collector[m]):
+                                if m != 'gpt2':
+                                    if (m, 'gpt2') not in p_val.keys():
+                                        p_val[(m, 'gpt2')] =  list()
+                                    ### gpt
+                                    gpt_scores = scores_collector['gpt2'][r_i]
+                                    p_val[(m, 'gpt2')].append(scipy.stats.ttest_rel(r, gpt_scores, alternative='greater')[1])
+                                ### fasttext
+                                if (m, 'fasttext') not in p_val.keys():
+                                    p_val[(m, 'fasttext')] =  list()
+                                ft_scores = scores_collector['fasttext'][r_i]
+                                p_val[(m, 'fasttext')].append(scipy.stats.ttest_rel(r, ft_scores, alternative='greater')[1])
+
+                        model_collector = list()
+                        p_collector = list()
+                        for model_comb, scores in p_val.items():
+                            for score in scores:
+                                model_collector.append(model_comb)
+                                p_collector.append(score)
+
+                        corr_ps = mne.stats.fdr_correction(p_collector)[1]
+
+                        pyplot.savefig(out_path)
+                        pyplot.clf()
+                        pyplot.close()
