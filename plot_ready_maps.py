@@ -4,6 +4,27 @@ import numpy
 import os
 
 from nilearn import datasets, image, plotting, surface
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--spatial_analysis', choices=[ 
+                                                    'whole_brain', 
+                                                    'fedorenko_language', 
+                                                    'control_semantics', 
+                                                    'general_semantics'], 
+                                                    required=True, 
+                    help = 'Specifies how features are to be selected')
+args = parser.parse_args()
+
+
+if 'fedorenko' in args.spatial_analysis:
+    cmap = 'BuGn_r'
+elif 'general' in args.spatial_analysis:
+    cmap = 'YlGnBu_r'
+elif 'control' in args.spatial_analysis:
+    cmap = 'YlOrBr_r'
+else:
+    cmap = 'RdPu_r'
+
 ### Surface
 fsaverage = datasets.fetch_surf_fsaverage()
 
@@ -14,33 +35,51 @@ dataset_path = os.path.join('/', 'import', 'cogsci', 'andrea',
 sub_path = os.path.join(dataset_path, 'sub-01', 'ses-mri', \
                                      'func',
                                      )
-file_path = os.path.join(sub_path, 'sub-01_ses-mri_task-dot{}_run-01_bold.nii'.format(args.dataset.replace('_', '')))
+file_path = os.path.join(sub_path, 'sub-01_ses-mri_task-dotbookfast_run-01_bold.nii')
 single_run = nilearn.image.load_img(file_path)
-if args.spatial_analysis == 'all':
-    map_nifti = nilearn.masking.compute_brain_mask(single_run)
-elif args.spatial_analysis == 'language_areas':
-    maps_folder = os.path.join('region_maps', 'maps')   
-    assert os.path.exists(maps_folder)
-    map_path = os.path.join(maps_folder, 'language_areas.nii')
+maps_folder = os.path.join('region_maps', 'maps')   
+assert os.path.exists(maps_folder)
+### Loading ROI maps
+if args.spatial_analysis == 'general_semantics':
+    map_path = os.path.join(maps_folder, 'General_semantic_cognition_ALE_result.nii')
     assert os.path.exists(map_path)
     map_nifti = nilearn.image.load_img(map_path)
-masked_run = nilearn.masking.apply_mask(single_run, map_nifti).T[:, beg:end]
+    map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+elif args.spatial_analysis == 'control_semantics':
+    map_path = os.path.join(maps_folder, 'semantic_control_ALE_result.nii')
+    assert os.path.exists(map_path)
+    map_nifti = nilearn.image.load_img(map_path)
+    map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+elif args.spatial_analysis == 'fedorenko_language':
+    map_path = os.path.join(maps_folder, 'allParcels_language_SN220.nii')
+    assert os.path.exists(map_path)
+    map_nifti = nilearn.image.load_img(map_path)
+    map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+else:
+    map_nifti = nilearn.masking.compute_brain_mask(single_run)
+map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
+masked_run = nilearn.masking.apply_mask(single_run, map_nifti).T[:, 4:11]
 #sample_img = nilearn.image.index_img(single_run, 15)
 final_img = numpy.zeros(masked_run.flatten().shape)
+folder = os.path.join('voxel_selection', 'fisher_scores')
 
 for root, direc, filez in os.walk(folder):
     for f in filez:
-        with open(os.path.join(root, f)) as i:
+        if 'flattened' in root and args.spatial_analysis in root:
+            with open(os.path.join(root, f)) as i:
 
-            lines = numpy.array([l.strip().split('\t') for l in i.readlines()][0], dtype=numpy.float64)
-        sorted_dims = sorted(list(enumerate(lines)), key=lambda item : item[1], reverse=True)
-        assert final_img.shape[0] == len(sorted_dims)
-        #blank = numpy.zeros(len(sorted_dims))
-        n_dims = 5000
-        selected_dims = [k[0] for k in sorted_dims[:n_dims]]
-        for dim in selected_dims:
-            final_img[dim] += 1.
-
+                lines = numpy.array([l.strip().split('\t') for l in i.readlines()][0], dtype=numpy.float64)
+            sorted_dims = sorted(list(enumerate(lines)), key=lambda item : item[1], reverse=True)
+            try:
+                assert final_img.shape[0] == len(sorted_dims)
+            except AssertionError:
+                print(final_img.shape[0], len(sorted_dims))
+                print((root, f))
+            #blank = numpy.zeros(len(sorted_dims))
+            n_dims = 5000
+            selected_dims = [k[0] for k in sorted_dims[:n_dims]]
+            for dim in selected_dims:
+                final_img[dim] += 1.
 
 out = os.path.join('plots', 
        'feature_selection_location')
@@ -49,11 +88,6 @@ final_img = numpy.average(final_img.reshape(masked_run.shape), axis=1)
 blank = numpy.zeros(map_nifti.shape)
 blank[map_nifti.get_fdata().astype(bool)] = final_img
 plot_img = nilearn.image.new_img_like(map_nifti, blank)
-maps_folder = os.path.join('region_maps', 'maps')   
-assert os.path.exists(maps_folder)
-map_path = os.path.join(maps_folder, 'language_areas.nii')
-assert os.path.exists(map_path)
-map_nifti = nilearn.image.load_img(map_path)
 display = nilearn.plotting.plot_stat_map(
                                #plot_img, 
                                map_nifti,
@@ -101,7 +135,7 @@ r = plotting.plot_surf_stat_map(
             threshold=.95, 
             bg_map=fsaverage.sulc_right,
             darkness=0.6,
-            cmap='BuPu',
+            cmap=cmap,
             #view='medial',
             alpha=0.4,
             dpi=600,
@@ -119,7 +153,7 @@ l = plotting.plot_surf_stat_map(
             bg_map=fsaverage.sulc_left,
             #cmap='Spectral_R', 
             #cmap='Wistia',
-            cmap='BuPu',
+            cmap=cmap,
             #view='medial',
             darkness=0.6,
             alpha=0.4,
