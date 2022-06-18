@@ -432,15 +432,15 @@ for dataset, d_data in whole_collector.items():
 
                         ### Setting the title
                         if 'decoding' in methodology:
-                            title = 'Comparing decoding performance from fMRI to {}\nusing {} features from {} - {}'.format(
-                                     computational_model, features.split('_')[1], analysis, spatial_analysis)
+                            title = 'Comparing decoding performance from fMRI\nusing {} features from {}\n{}'.format(
+                                     features.split('_')[1], analysis, spatial_analysis)
                         elif 'encoding' in methodology:
-                            title = 'Comparing decoding performance from {} to fMRI\nusing {} features from {} - {}'.format(
-                                     computational_model, features.split('_')[1], analysis, spatial_analysis)
+                            title = 'Comparing encoding performance to fMRI\nusing {} features from {}\n{}'.format(
+                                     features.split('_')[1], analysis, spatial_analysis)
                         if 'True' in senses:
                             title =  '{}\naggregating phrases for word senses'.format(title)
                         title = title.replace('_', ' ')
-                        ax.set_title(title, fontsize=20, pad=40)
+                        ax.set_title(title, fontsize=20, pad=20)
 
                         ### Creating the output path
                         out_path  = os.path.join('plots', methodology,
@@ -449,7 +449,7 @@ for dataset, d_data in whole_collector.items():
                                                  senses, features, dataset,
                                                  )
                         os.makedirs(out_path, exist_ok=True)
-                        out_path = os.path.join(out_path, '{}.jpg'.format(spatial_analysis)) 
+                        out_path = os.path.join(out_path, '{}_{}.jpg'.format(spatial_analysis, senses)) 
 
                         ### Setting colors
                         if 'book' in dataset:
@@ -603,6 +603,7 @@ for dataset, d_data in whole_collector.items():
                         ax.hlines(xmin=-.4, xmax=max(positions)+0.5, y=[0.3, 0.4, 0.6, 0.7, 0.8, 0.9, 1.], 
                                   alpha=0.2, color='darkgray', linestyle='dashdot')
                         ax.set_ylim(bottom=0.2, top=1.05)
+                        ax.set_xlim(left=-.8, right=len(ceiling_pos)-.5)
 
                         ### Computing ps, and then fdr corrections
                         scores_collector = list()
@@ -633,6 +634,14 @@ for dataset, d_data in whole_collector.items():
                                                marker='*', s=70, c='black',
                                                zorder=2)
                         
+                        ax.text(x=-.5, y=0.31, ha='center', va='center', 
+                                s='p-value\n(FDR)', fontsize=12, fontweight='bold') 
+                        ax.text(x=-.5, y=0.23, ha='center', va='center', 
+                                s='<0.05', fontsize=12, fontweight='bold') 
+                        ax.text(x=-.5, y=0.25, ha='center', va='center', 
+                                s='<0.005', fontsize=12, fontweight='bold') 
+                        ax.text(x=-.5, y=0.27, ha='center', va='center',
+                                 s='<0.0005', fontsize=12, fontweight='bold') 
                         ### pairwise comparisons among models
                         scores_collector = dict()
                         for k, v in models_collector.items():
