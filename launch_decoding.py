@@ -8,7 +8,11 @@ parser.add_argument('--spatial_analysis', choices=['whole_brain', 'general_seman
 parser.add_argument('--senses', action='store_true', default=False)
 args = parser.parse_args()
 
-models = ['ceiling', 'gpt2', 'concreteness', 'fasttext', 'gpt2_concreteness', 'fasttext_concreteness']
+models = [
+          'gpt2', 'concreteness', 'fasttext', 
+          'ceiling',
+          #'gpt2_concreteness', 'fasttext_concreteness'
+          ]
 
 for model in models:
 

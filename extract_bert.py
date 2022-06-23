@@ -6,14 +6,15 @@ import re
 import torch
 
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer, AutoModelForMaskedLM
+from transformers import AutoModel, AutoTokenizer, AutoModelForMaskedLM, AutoModelWithLMHead
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--layer', choices=['middle_four', 'top_four',
                                         'high_four'],
                     required=True, help='Which layer?')
 parser.add_argument('--model', choices=['ITBERT', 'MBERT', 'GILBERTO',
-                                        'ITGPT2small', 'ITGPT2medium'],
+                                        'ITGPT2small', 'ITGPT2medium',
+                                        'geppetto'],
                     required=True, help='Which model?')
 parser.add_argument('--tokens', choices=['single_words', 'span_average', 
                     'sentence_average'],
@@ -28,11 +29,18 @@ if args.model == 'ITGPT2small':
     model_name = 'GroNLP/gpt2-small-italian'
 if args.model == 'ITGPT2medium':
     model_name = 'GroNLP/gpt2-medium-italian-embeddings'
+if args.model == 'geppetto':
+    model_name = 'LorenzoDeMattei/GePpeTto'
 if args.model == 'MBERT':
     model_name = 'bert-base-multilingual-cased'
 
 tokenizer = AutoTokenizer.from_pretrained(model_name, sep_token='[SEP]')
-if 'gpt' in model_name or 'GPT' in model_name:
+if 'GeP' in model_name:
+    model = AutoModelWithLMHead.from_pretrained("LorenzoDeMattei/GePpeTto").to('cuda:1')
+    required_shape = model.config.n_embd
+    max_len = model.config.n_positions
+    n_layers = model.config.n_layer
+elif 'gpt' in model_name or 'GPT' in model_name:
     model = AutoModel.from_pretrained(model_name).to('cuda:1')
     required_shape = model.embed_dim
     max_len = model.config.n_positions
@@ -46,7 +54,7 @@ else:
 entity_vectors = dict()
 
 sentences_folder = os.path.join('resources', 'book_for_lunch_sentences')
-sentences_folder = os.path.join('book_for_lunch_sentences')
+#sentences_folder = os.path.join('book_for_lunch_sentences')
 #sentences_folder = os.path.join('resources', 'single_words_sentences')
 
 with tqdm() as pbar:

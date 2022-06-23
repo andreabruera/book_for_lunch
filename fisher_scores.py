@@ -160,7 +160,7 @@ parser.add_argument('--analysis', required=True, \
 parser.add_argument('--spatial_analysis', choices=[ 
                     'whole_brain', 
                     'language_areas', 'fedorenko_language', 
-                    'control_semantics', 'general_semantice'], 
+                    'control_semantics', 'general_semantics'], 
                     required=True, \
                     help = 'Specifies how features are to be selected')
 parser.add_argument('--method', choices=['stability', 'fisher'], required=True, \

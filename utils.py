@@ -7,6 +7,9 @@ def read_vectors(args):
         vec_folder = os.path.join('resources', 'ITGPT2medium_top_four_span_average')
     if 'fasttext' in args.computational_model:
         vec_folder = os.path.join('resources', 'fasttext_concatenated')
+    if 'geppetto' in args.computational_model:
+        vec_folder = os.path.join('resources', 'geppetto_top_four_span_average')
+
     vectors = dict()
     for f in os.listdir(vec_folder):
         assert '.vector' in f

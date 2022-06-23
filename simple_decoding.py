@@ -149,6 +149,7 @@ parser.add_argument('--computational_model', type=str, required=True, \
                                          'fasttext_concreteness', 
                                          'gpt2_concreteness',
                                          'familiarity', 
+                                         'geppetto',
                                          #'vector_familiarity', 
                                          'concreteness', 
                                          #'vector_concreteness', 
@@ -182,7 +183,7 @@ assert os.path.exists(maps_folder)
 map_names = [n for n in os.listdir(maps_folder)]
 map_results = dict()
 
-if args.computational_model in ['gpt2', 'fasttext']:
+if args.computational_model in ['geppetto', 'gpt2', 'fasttext']:
     vectors = read_vectors(args)
 else:
     ### Concreteness or other variables
@@ -413,11 +414,11 @@ for s in range(1, n_subjects+1):
         ceiling_keys = {tuple(k.replace("'", ' ').split()) : k  for k in current_ceiling.keys()}
         ceiling_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in ceiling_keys.items()}
         vectors = {k : current_ceiling[v] for k, v in ceiling_keys.items() if 'neg' not in k}
-    elif args.computational_model not in ['gpt2', 'fasttext']:
+    elif args.computational_model not in ['geppetto', 'gpt2', 'fasttext']:
         ### Pairwise similarities
         vectors = {k : [abs(model_data[k]-model_data[k_two]) for k_two in full_sub_data.keys() if k_two!=k] for k in full_sub_data.keys()}
         ### Mixed vectors
-        if 'gpt2' in args.computational_model or 'fasttext' in args.computational_model:
+        if 'gpt2' in args.computational_model or 'fasttext' in args.computational_model or 'geppetto' in args.computational_model:
             vec_part_one = read_vectors(args)
             shared_keys = [k for k in vec_part_one.keys() if k in vectors.keys()]
             vectors = {k : numpy.hstack((vec_part_one[k], vectors[k])) for k in shared_keys}
@@ -510,7 +511,7 @@ for s in range(1, n_subjects+1):
         logging.info('Computing RSA vectors...')
         actual_brain = {k : [scipy.stats.pearsonr(v, v_two)[0] for k_two, v_two in actual_brain.items() if k!=k_two] for k, v in actual_brain.items()}
         ### Cognitive model are already pairwise distances
-        if args.computational_model in ['gpt2', 'fasttext']:
+        if args.computational_model in ['geppetto', 'gpt2', 'fasttext']:
             actual_vectors = {k : [scipy.stats.pearsonr(v, v_two)[0] for k_two, v_two in actual_vectors.items() if k!=k_two] for k, v in actual_vectors.items()}
     ### TODO: implement pairwise word vectors
     '''
@@ -611,6 +612,38 @@ for s in range(1, n_subjects+1):
             else:
                 accuracies.append(0)
 
+    ### Writing to file ALL individual results
+    res_mapper = {'simple' : 'light', 'verb' : 'transparent', 'dot' : 'coercion',
+                  'concrete' : 'object', 'abstract' : 'information'}
+
+    output_folder = os.path.join(
+                                 'results',
+                                 'full_results_vector_{}'.format(args.methodology),
+                                 args.analysis, 
+                                 'senses_{}'.format(args.senses),
+                                 '{}_{}'.format(args.feature_selection, n_dims), 
+                                 args.computational_model, 
+                                 args.spatial_analysis,
+                                 args.dataset, 
+                                 )
+    os.makedirs(output_folder, exist_ok=True)
+    with open(os.path.join(output_folder, 'sub-{:02}.results'.format(s)), 'w') as o:
+        o.write('phrase_one\tphenomenon_one\tsemantic_type_one\t'
+                'phrase_two\tphenomenon_two\tsemantic_type_two\t'
+                'score\n')
+        for test_comb, test_result in zip(combs, accuracies):
+            phen_one = trials[test_comb[0]].split('_')[0]
+            type_one = trials[test_comb[0]].split('_')[1]
+            phen_two = trials[test_comb[1]].split('_')[0]
+            type_two = trials[test_comb[1]].split('_')[1]
+            o.write('{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(test_comb[0], 
+                                          res_mapper[phen_one],
+                                          res_mapper[type_one],
+                                          test_comb[1], 
+                                          res_mapper[phen_two],
+                                          res_mapper[type_two],
+                                          test_result))
+        
     accuracy = numpy.average(accuracies)
     print(accuracy)
     for c, a in zip(combs, accuracies):
