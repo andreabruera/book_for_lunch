@@ -387,17 +387,33 @@ for s in range(1, n_subjects+1):
     #random_indices = random.sample(list(range(dimensionality)), k=10000)
     #sub_data = {k : v[random_indices] for k, v in sub_data.items()}
     feature_analysis = 'whole_trial' if args.analysis == 'glm' else args.analysis
-    feature_folder = os.path.join('voxel_selection',
-                           '{}_scores'.format(args.feature_selection), 
-                           '{}_to_{}'.format(beg, end),
-                           args.dataset, feature_analysis, args.spatial_analysis, 
-                           'sub-{:02}.{}'.format(s, args.feature_selection))
-    with open(feature_folder) as i:
-        lines = numpy.array([l.strip().split('\t') for l in i.readlines()][0], dtype=numpy.float64)
-    assert len(lines) == dimensionality
+    feature_selection = 'loso'
+    if feature_selection == 'expensive':
+        feat_sub = [s]
+    else:
+        feat_sub = list(range(1, n_subjects+1))
+    for f_sub in feat_sub:
+        feature_folder = os.path.join(
+                               #'voxel_selection',
+                               'new_voxel_selection',
+                               '{}_scores'.format(args.feature_selection), 
+                               '{}_to_{}'.format(beg, end),
+                               args.dataset, feature_analysis, args.spatial_analysis, 
+                               'sub-{:02}.{}'.format(f_sub, args.feature_selection))
+        with open(feature_folder) as i:
+            lines = {l.split('\t')[0].replace('_', ' ') : numpy.array(l.strip().split('\t')[1:], dtype=numpy.float64) for l in i.readlines()}
+        if f_sub == 1:
+            feat_lines = {k : v for k, v in lines.items() if len(v) > 1}
+        else:
+            feat_lines = {k : numpy.sum([v, lines[k]], axis=0) for k, v in feat_lines.items()}
+        for k, v in feat_lines.items():
+            assert len(v) == dimensionality
+    '''
+    ###OLD
     sorted_dims = sorted(list(enumerate(lines)), key=lambda item : item[1], reverse=True)
     n_dims = args.n_brain_features
     selected_dims = [k[0] for k in sorted_dims[:n_dims]]
+    '''
 
     ### Aligning inputs and targets
 
@@ -410,7 +426,7 @@ for s in range(1, n_subjects+1):
     if args.computational_model == 'ceiling':
         current_ceiling = {k : [ceiling_data[sub][k] for sub in range(1, len(ceiling_data.keys())+1) if sub!=s] for k in ceiling_data[s].keys()}
         current_ceiling = {k : numpy.average(v, axis=0) for k, v in current_ceiling.items()}
-        current_ceiling = {k : v[selected_dims] for k, v in current_ceiling.items()}
+        #current_ceiling = {k : v[selected_dims] for k, v in current_ceiling.items()}
         ceiling_keys = {tuple(k.replace("'", ' ').split()) : k  for k in current_ceiling.keys()}
         ceiling_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in ceiling_keys.items()}
         vectors = {k : current_ceiling[v] for k, v in ceiling_keys.items() if 'neg' not in k}
@@ -447,9 +463,9 @@ for s in range(1, n_subjects+1):
     sub_data = {k : numpy.average(v, axis=0) if len(v)<10 else v for k, v in full_sub_data.items()}
     old_dims = set([len(v) for v in sub_data.values()])
     ### Applying feature selection
-    sub_data = {k : v[selected_dims] for k, v in sub_data.items()}
-    new_dims = set([len(v) for v in sub_data.values()])
-    print('Reduced dimensionality from {} to {} features'.format(old_dims, new_dims))
+    #sub_data = {k : v[selected_dims] for k, v in sub_data.items()}
+    #new_dims = set([len(v) for v in sub_data.values()])
+    #print('Reduced dimensionality from {} to {} features'.format(old_dims, new_dims))
 
     ### Limiting
     ### Taking away 'unclear' samples
@@ -538,8 +554,30 @@ for s in range(1, n_subjects+1):
         vecs = sklearn.decomposition.PCA(n_components=.7).fit_transform(list(vectors.values()))
         vectors = {k : v for k, v in zip(vectors.keys(), vecs)}
     '''
+
+    if feature_selection == 'loso':
+        feat_comb = list(feat_lines.values())
+        feat_comb = numpy.sum(feat_comb, axis=0)
+        assert feat_comb.shape[0] == dimensionality
+        sorted_dims = sorted(list(enumerate(feat_comb)), key=lambda item : item[1], reverse=True)
+        n_dims = args.n_brain_features
+        selected_dims = [k[0] for k in sorted_dims[:n_dims]]
+
     combs = list(itertools.combinations(list(actual_vectors.keys()), 2))
     for c in tqdm(combs):
+        if feature_selection == 'expensive':
+            ### Feature selection
+            for c_n in c:
+                assert c_n in feat_lines.keys()
+            feat_comb = [v for k, v in feat_lines.items() if k not in c]
+            feat_comb = numpy.sum(feat_comb, axis=0)
+            assert feat_comb.shape[0] == dimensionality
+            sorted_dims = sorted(list(enumerate(feat_comb)), key=lambda item : item[1], reverse=True)
+            n_dims = args.n_brain_features
+            selected_dims = [k[0] for k in sorted_dims[:n_dims]]
+        else:
+            feat_comb = list(feat_lines.values())
+
         ### Encoding
         if 'encoding' in args.methodology:
             ### PCA reduction of vectors
@@ -548,7 +586,14 @@ for s in range(1, n_subjects+1):
 
             test_inputs = [actual_vectors[c_i] for c_i in c]
             test_targets = [actual_brain[c_i] for c_i in c]
+            ### Feature selection
+            train_targets = [t[selected_dims] for t in train_targets]
+            test_targets = [t[selected_dims] for t in test_targets]
             assert test_targets[0].shape == (args.n_brain_features, )
+            assert train_targets[0].shape == (args.n_brain_features, )
+            if args.computational_model == 'ceiling':
+                train_inputs = [t[selected_dims] for t in train_inputs]
+                test_inputs = [t[selected_dims] for t in test_inputs]
         ### Decoding
         else:
             '''
@@ -565,7 +610,14 @@ for s in range(1, n_subjects+1):
 
             test_inputs = [actual_brain[c_i] for c_i in c]
             test_targets = [actual_vectors[c_i] for c_i in c]
+            ## Feature selection
+            train_inputs = [t[selected_dims] for t in train_inputs]
+            test_inputs = [t[selected_dims] for t in test_inputs]
+            assert train_inputs[0].shape == (args.n_brain_features, )
             assert test_inputs[0].shape == (args.n_brain_features, )
+            if args.computational_model == 'ceiling':
+                train_targets = [t[selected_dims] for t in train_targets]
+                test_targets = [t[selected_dims] for t in test_targets]
 
         #print('Input shape: {}'.format(test_inputs[0].shape))
         #print('Target shape: {}'.format(test_targets[0].shape))

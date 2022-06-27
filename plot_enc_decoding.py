@@ -69,7 +69,6 @@ for root, direc, filez in os.walk(folder):
 
 ### Plotting main violin plots
 
-'''
 for dataset, d_data in whole_collector.items():
     for spatial_analysis, s_data in d_data.items():
         for methodology, m_data in s_data.items():
@@ -421,7 +420,6 @@ for dataset, d_data in whole_collector.items():
                             pyplot.savefig(os.path.join(out_path))
                             pyplot.clf()
                             pyplot.close()
-'''
 ### Bar plots for full comparisons
 for dataset, d_data in whole_collector.items():
     for spatial_analysis, s_data in d_data.items():
@@ -684,7 +682,6 @@ for dataset, d_data in whole_collector.items():
                         pyplot.savefig(out_path)
                         pyplot.clf()
                         pyplot.close()
-'''
 ### Bar plots for full comparisons
 for dataset, d_data in whole_collector.items():
     for spatial_analysis, s_data in d_data.items():
@@ -1155,4 +1152,3 @@ for dataset, d_data in whole_collector.items():
                         pyplot.savefig(out_path)
                         pyplot.clf()
                         pyplot.close()
-'''

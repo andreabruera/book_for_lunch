@@ -19,6 +19,8 @@ from sklearn.linear_model import Ridge
 from sklearn.svm import SVC
 from tqdm import tqdm
 
+'''
+### OLD
 def stability(all_args):
     current_data = all_args[0]
     dimensionality = all_args[1]
@@ -41,6 +43,7 @@ def stability(all_args):
         sub_values += values
     return [subject, sub_values]
 
+###OLD
 def fisher(all_args):
     current_data = all_args[0]
     dimensionality = all_args[1]
@@ -59,6 +62,48 @@ def fisher(all_args):
                 fisher = 0.0
             values[idx] = fisher
         sub_values += values
+    return [subject, sub_values]
+'''
+def fisher(all_args):
+    subject_data = all_args[0]
+    dimensionality = all_args[1]
+    subject = all_args[2]
+    sub_values = {k : list() for k in subject_data.keys()}
+    for idx in tqdm(range(dimensionality)):
+        dim_recs = [[trial[idx] for trial in stim_data] for stim, stim_data in subject_data.items()]
+        dim_recs = numpy.array(dim_recs)
+        overall_mean = numpy.average(dim_recs)
+        means = numpy.average(dim_recs, axis=1)
+        variances = numpy.var(dim_recs, axis=1)
+        fisher = ((means*overall_mean)**2)/(variances**2)
+        ### Replacing NANs with 0.0
+        fisher = numpy.nan_to_num(fisher)
+        assert fisher.shape[0] == len(subject_data.keys())
+        for k, v in zip(subject_data.keys(), fisher):
+            sub_values[k].append(v)
+    sub_values = {k : numpy.array(v) for k, v in sub_values.items()}
+    return [subject, sub_values]
+
+def stability(all_args):
+    subject_data = all_args[0]
+    dimensionality = all_args[1]
+    subject = all_args[2]
+    sub_values = {k : list() for k in subject_data.keys()}
+    for idx in tqdm(range(dimensionality)):
+        dim_recs = [[trial[idx] for trial in stim_data] for stim, stim_data in subject_data.items()]
+        dim_recs = numpy.array(dim_recs)
+        combs = itertools.combinations(range(dim_recs.shape[-1]), 2)
+        idx_list = list()
+        for c in combs:
+            stab = scipy.stats.pearsonr(dim_recs[:, c[0]], dim_recs[:, c[1]])[0]
+            idx_list.append(stab)
+        ### Replacing NANs with 0.0
+        fisher = numpy.nan_to_num(idx_list)
+        print(fisher.shape)
+        assert fisher.shape[0] == len(subject_data.keys())
+        for k, v in zip(subject_data.keys(), fisher):
+            sub_values[k].append(v)
+    sub_values = {k : numpy.array(v) for k, v in sub_values.items()}
     return [subject, sub_values]
 
 def read_vectors(vectors_folder):
@@ -246,6 +291,32 @@ for s in range(1, n_subjects+1):
 
 subjects = list(range(len(overall_sub_data)))
 
+all_args = [[overall_sub_data[curr], dimensionality, curr+1] for curr in subjects]
+with multiprocessing.Pool() as mp:
+    if args.method == 'fisher':
+        results = mp.map(fisher, all_args)
+    elif args.method == 'stability':
+        results = mp.map(stability, all_args)
+    mp.terminate()
+    mp.join()
+output_folder = os.path.join('new_voxel_selection', '{}_scores'.format(args.method), 
+                             '{}_to_{}'.format(beg, end),
+                             args.dataset, args.analysis,
+                             args.spatial_analysis,
+                             )
+os.makedirs(output_folder, exist_ok=True)
+
+for s in results:
+    with open(os.path.join(output_folder, 'sub-{:02}.{}'.format(s[0], args.method)), 'w') as o:
+        for k, v in s[1].items():
+            k = k.replace("'", ' ').split()
+            k = '_'.join([k[0], k[-1]])
+            o.write('{}\t'.format(k))
+            for val in v:
+                o.write('{}\t'.format(float(val)))
+            o.write('\n')
+'''
+### OLD
 all_args = [[[overall_sub_data[s] for s in subjects if s!=curr], dimensionality, curr+1] for curr in subjects]
 with multiprocessing.Pool() as mp:
     if args.method == 'fisher':
@@ -266,3 +337,4 @@ for s in results:
     with open(os.path.join(output_folder, 'sub-{:02}.{}'.format(s[0], args.method)), 'w') as o:
         for v in s[1]: 
             o.write('{}\t'.format(float(v)))
+'''
