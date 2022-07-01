@@ -5,6 +5,8 @@ import os
 
 from nilearn import datasets, image, plotting, surface
 
+from atlas_harvard_oxford_lobes import harvard_oxford_to_lobes
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--spatial_analysis', choices=[ 
                                                     'whole_brain', 
@@ -58,6 +60,9 @@ elif args.spatial_analysis == 'fedorenko_language':
 else:
     map_nifti = nilearn.masking.compute_brain_mask(single_run)
 map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
+### Print number of voxels
+n_voxels = sum([1 for v in map_nifti.get_fdata().flatten() if v==True])
+print('Total number of voxels: {}'.format(n_voxels))
 masked_run = nilearn.masking.apply_mask(single_run, map_nifti).T[:, 4:11]
 #sample_img = nilearn.image.index_img(single_run, 15)
 final_img = numpy.zeros(masked_run.flatten().shape)
@@ -104,10 +109,6 @@ dataset = nilearn.datasets.fetch_atlas_harvard_oxford('cort-maxprob-thr25-1mm')
 maps = dataset['maps']
 maps_data = maps.get_fdata()
 labels = dataset['labels']
-with open('atlas_harvard_oxford_lobes.py', 'w') as o:
-    for l in labels:
-        o.write("    '{}'\n".format(l))
-import pdb; pdb.set_trace()
 collector = {l : numpy.array([], dtype=numpy.float64) for l in labels}
 #maps = nilearn.image.resample_to_img(map_nifti, maps, interpolation='nearest')
 interpr_nifti = nilearn.image.resample_to_img(plot_img, maps, interpolation='nearest')
@@ -128,6 +129,13 @@ collector = sorted({k : v.shape[0]/16 for k, v in collector.items()}.items(),
                     reverse=True)
 total = sum(list([k[1] for k in collector]))
 percentages = {k[0] : k[1]/total if k[1] != 0. else 0. for k in collector}
+lobes = harvard_oxford_to_lobes()
+lobes_perc = dict()
+for k, v in lobes.items():
+    perc = sum([perc for area, perc in percentages.items() if area in v])
+    lobes_perc[k] = perc
+percentages.update(lobes_perc)
+
 output_perc = os.path.join(out, '{}_{}.txt'.format(args.spatial_analysis, n_dims))
 with open(output_perc, 'w') as o:
     for k, v in percentages.items():
