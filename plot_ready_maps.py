@@ -104,6 +104,10 @@ dataset = nilearn.datasets.fetch_atlas_harvard_oxford('cort-maxprob-thr25-1mm')
 maps = dataset['maps']
 maps_data = maps.get_fdata()
 labels = dataset['labels']
+with open('atlas_harvard_oxford_lobes.py', 'w') as o:
+    for l in labels:
+        o.write("    '{}'\n".format(l))
+import pdb; pdb.set_trace()
 collector = {l : numpy.array([], dtype=numpy.float64) for l in labels}
 #maps = nilearn.image.resample_to_img(map_nifti, maps, interpolation='nearest')
 interpr_nifti = nilearn.image.resample_to_img(plot_img, maps, interpolation='nearest')
