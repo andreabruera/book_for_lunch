@@ -1,42 +1,42 @@
-cambiare il tavolo	simple_concrete
-presentare il libro	dot_abstract
-cambiare l'idea	simple_abstract
-spiegare il motivo	verb_abstract
-consultare il libro	dot_abstract
-raccogliere il catalogo	dot_concrete
-dare la scrivania	simple_concrete
-consultare il catalogo	dot_abstract
 aprire il libro	dot_concrete
-presentare la domanda	verb_abstract
 spiegare la parola	verb_abstract
-raccogliere il fiore	verb_concrete
-avere l'armadio	simple_concrete
-regalare il fiore	verb_concrete
-raccogliere la palla	verb_concrete
-dare la sedia	simple_concrete
-cambiare la storia	simple_abstract
-aprire il catalogo	dot_concrete
-consultare l'esperto	verb_abstract
 aprire il pacco	verb_concrete
-cambiare l'armadio	simple_concrete
-presentare il problema	verb_abstract
-raccogliere il libro	dot_concrete
-presentare il programma	verb_abstract
-presentare il disegno	dot_abstract
-aprire la busta	verb_concrete
-cambiare il giudizio	simple_abstract
-spiegare la ragione	verb_abstract
-avere il divano	simple_concrete
-raccogliere la moneta	verb_concrete
-regalare il disegno	dot_concrete
 spiegare il disegno	dot_abstract
 avere l'opinione	simple_abstract
-avere il tavolo	simple_concrete
-regalare il biglietto	verb_concrete
 regalare il libro	dot_concrete
-dare l'idea	simple_abstract
-spiegare il libro	dot_abstract
-dare il giudizio	simple_abstract
+regalare il fiore	verb_concrete
+cambiare la storia	simple_abstract
+raccogliere la palla	verb_concrete
+consultare l'esperto	verb_abstract
+aprire la busta	verb_concrete
+presentare il libro	dot_abstract
+cambiare il tavolo	simple_concrete
 raccogliere la rivista	dot_concrete
 avere l'idea	simple_abstract
+dare il giudizio	simple_abstract
+dare la scrivania	simple_concrete
+cambiare l'idea	simple_abstract
+aprire il catalogo	dot_concrete
+presentare la domanda	verb_abstract
+spiegare la ragione	verb_abstract
+avere l'armadio	simple_concrete
+avere il tavolo	simple_concrete
+raccogliere il catalogo	dot_concrete
+cambiare il giudizio	simple_abstract
+consultare il libro	dot_abstract
+spiegare il libro	dot_abstract
+presentare il disegno	dot_abstract
+presentare il problema	verb_abstract
 consultare la rivista	dot_abstract
+regalare il disegno	dot_concrete
+dare la sedia	simple_concrete
+consultare il catalogo	dot_abstract
+cambiare l'armadio	simple_concrete
+raccogliere la moneta	verb_concrete
+dare l'idea	simple_abstract
+raccogliere il fiore	verb_concrete
+presentare il programma	verb_abstract
+avere il divano	simple_concrete
+regalare il biglietto	verb_concrete
+spiegare il motivo	verb_abstract
+raccogliere il libro	dot_concrete

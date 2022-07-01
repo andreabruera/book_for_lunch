@@ -116,9 +116,11 @@ for l_i, label in enumerate(labels):
                                       maps_data==index)
         region_map = numpy.where(region_map==True, 1, 0)
         '''
-        mskd = nilearn.masking.apply_mask(interpr_nifti, nilearn.image.new_img_like(maps, msk))
+        mskd = nilearn.masking.apply_mask(interpr_nifti, 
+                                          nilearn.image.new_img_like(maps, msk))
         collector[label] = mskd[mskd>0.]
-collector = sorted({k : v.shape[0]/16 for k, v in collector.items()}.items(), key=lambda items : items[1],
+collector = sorted({k : v.shape[0]/16 for k, v in collector.items()}.items(), 
+                    key=lambda items : items[1],
                     reverse=True)
 total = sum(list([k[1] for k in collector]))
 percentages = {k[0] : k[1]/total if k[1] != 0. else 0. for k in collector}
