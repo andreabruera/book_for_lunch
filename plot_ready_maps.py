@@ -19,13 +19,15 @@ args = parser.parse_args()
 
 
 if 'fedorenko' in args.spatial_analysis:
-    cmap = 'BuGn_r'
-elif 'general' in args.spatial_analysis:
-    cmap = 'YlGnBu_r'
-elif 'control' in args.spatial_analysis:
-    cmap = 'YlOrBr_r'
-else:
     cmap = 'RdPu_r'
+elif 'general_sem' in args.spatial_analysis:
+    cmap = 'YlOrBr_r'
+elif 'control_sem' in args.spatial_analysis:
+    cmap = 'Blues'
+elif 'control' in args.spatial_analysis:
+    cmap = 'Greys'
+else:
+    cmap = 'summer'
 
 ### Surface
 fsaverage = datasets.fetch_surf_fsaverage()
@@ -50,6 +52,12 @@ if args.spatial_analysis == 'general_semantics':
 elif args.spatial_analysis == 'control_semantics':
     map_path = os.path.join(maps_folder, 'semantic_control_ALE_result.nii')
     assert os.path.exists(map_path)
+    map_nifti = nilearn.image.load_img(map_path)
+    map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+elif args.spatial_analysis == 'general_control':
+    map_path = os.path.join(maps_folder, 'allParcels_MD_HE197.nii')
+    assert os.path.exists(map_path)
+    logging.info('Masking general control areas...')
     map_nifti = nilearn.image.load_img(map_path)
     map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
 elif args.spatial_analysis == 'fedorenko_language':

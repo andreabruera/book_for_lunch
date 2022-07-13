@@ -205,7 +205,8 @@ parser.add_argument('--analysis', required=True, \
 parser.add_argument('--spatial_analysis', choices=[ 
                     'whole_brain', 
                     'language_areas', 'fedorenko_language', 
-                    'control_semantics', 'general_semantics'], 
+                    'control_semantics', 'general_semantics',
+                    'general_control'], 
                     required=True, \
                     help = 'Specifies how features are to be selected')
 parser.add_argument('--method', choices=['stability', 'fisher'], required=True, \
@@ -260,6 +261,13 @@ for s in range(1, n_subjects+1):
         assert os.path.exists(map_path)
         logging.info('Masking language areas...')
         map_nifti = nilearn.image.load_img(map_path)
+    elif args.spatial_analysis == 'general_control':
+        map_path = os.path.join(maps_folder, 'allParcels_MD_HE197.nii')
+        assert os.path.exists(map_path)
+        logging.info('Masking general control areas...')
+        map_nifti = nilearn.image.load_img(map_path)
+        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+        map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
     elif args.spatial_analysis == 'general_semantics':
         map_path = os.path.join(maps_folder, 'General_semantic_cognition_ALE_result.nii')
         assert os.path.exists(map_path)

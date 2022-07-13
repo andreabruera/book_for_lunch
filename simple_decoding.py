@@ -131,7 +131,9 @@ parser.add_argument('--spatial_analysis', choices=[
                                                     'whole_brain', 
                                                     'fedorenko_language', 
                                                     'control_semantics', 
-                                                    'general_semantics'], 
+                                                    'general_semantics',
+                                                    'general_control',
+                                                    'best_features'], 
                                                     required=True, 
                     help = 'Specifies how features are to be selected')
 parser.add_argument('--feature_selection', choices=['fisher', 'stability'], required=True, \
@@ -152,6 +154,7 @@ parser.add_argument('--computational_model', type=str, required=True, \
                                          'geppetto',
                                          #'vector_familiarity', 
                                          'concreteness', 
+                                         'concretenesssingle', 
                                          #'vector_concreteness', 
                                          'frequency', 
                                          #'vector_frequency',
@@ -189,7 +192,12 @@ else:
     ### Concreteness or other variables
     with open('{}_stimuli_ratings.tsv'.format(args.dataset)) as i:
         lines = [l.strip().split('\t') for l in i.readlines()]
-    if 'concreteness' in args.computational_model:
+    if args.computational_model == 'concretenesssingle':
+        with open(os.path.join('stimuli_norming', 
+                  'concreteness_book_single_words_en.txt')) as i:
+            lines = [l.strip().split('\t') for l in i.readlines()]
+        model_data = {l[0] : float(l[1]) for l in lines}
+    elif 'concreteness' in args.computational_model:
         model_data = {l[0] : float(l[4]) for l in lines[1:]}
     elif 'familiarity' in args.computational_model:
         model_data = {l[0] : float(l[2]) for l in lines[1:]}
@@ -208,6 +216,12 @@ if args.spatial_analysis == 'general_semantics':
     map_path = os.path.join(maps_folder, 'General_semantic_cognition_ALE_result.nii')
     assert os.path.exists(map_path)
     logging.info('Masking general semantics areas...')
+    map_nifti = nilearn.image.load_img(map_path)
+    map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+elif args.spatial_analysis == 'general_control':
+    map_path = os.path.join(maps_folder, 'allParcels_MD_HE197.nii')
+    assert os.path.exists(map_path)
+    logging.info('Masking general control areas...')
     map_nifti = nilearn.image.load_img(map_path)
     map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
 elif args.spatial_analysis == 'control_semantics':
@@ -260,6 +274,8 @@ if args.computational_model == 'ceiling':
             runs.append((single_run, trial_infos))
 
         if args.spatial_analysis == 'whole_brain':
+            map_nifti = nilearn.masking.compute_brain_mask(runs[0][0])
+        elif args.spatial_analysis == 'best_features':
             map_nifti = nilearn.masking.compute_brain_mask(runs[0][0])
         map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
 
@@ -346,6 +362,8 @@ for s in range(1, n_subjects+1):
 
     if args.spatial_analysis == 'whole_brain':
         map_nifti = nilearn.masking.compute_brain_mask(runs[0][0])
+    if args.spatial_analysis == 'best_features':
+        map_nifti = nilearn.masking.compute_brain_mask(runs[0][0])
     map_nifti = nilearn.image.resample_to_img(map_nifti, single_run, interpolation='nearest')
 
     sub_results = collections.defaultdict(list)
@@ -388,18 +406,30 @@ for s in range(1, n_subjects+1):
     #sub_data = {k : v[random_indices] for k, v in sub_data.items()}
     feature_analysis = 'whole_trial' if args.analysis == 'glm' else args.analysis
     feature_selection = 'loso'
+    if args.spatial_analysis == 'best_features':
+        with open('best_features.txt') as i:
+            best = numpy.array(i.read().strip().split('\t'), dtype=numpy.float32)
     if feature_selection == 'expensive':
         feat_sub = [s]
     else:
         feat_sub = list(range(1, n_subjects+1))
     for f_sub in feat_sub:
-        feature_folder = os.path.join(
-                               #'voxel_selection',
-                               'new_voxel_selection',
-                               '{}_scores'.format(args.feature_selection), 
-                               '{}_to_{}'.format(beg, end),
-                               args.dataset, feature_analysis, args.spatial_analysis, 
-                               'sub-{:02}.{}'.format(f_sub, args.feature_selection))
+        if args.spatial_analysis == 'best_features':
+            feature_folder = os.path.join(
+                                   #'voxel_selection',
+                                   'new_voxel_selection',
+                                   '{}_scores'.format(args.feature_selection), 
+                                   '{}_to_{}'.format(beg, end),
+                                   args.dataset, feature_analysis, 'whole_brain', 
+                                   'sub-{:02}.{}'.format(f_sub, args.feature_selection))
+        else:
+            feature_folder = os.path.join(
+                                   #'voxel_selection',
+                                   'new_voxel_selection',
+                                   '{}_scores'.format(args.feature_selection), 
+                                   '{}_to_{}'.format(beg, end),
+                                   args.dataset, feature_analysis, args.spatial_analysis, 
+                                   'sub-{:02}.{}'.format(f_sub, args.feature_selection))
         with open(feature_folder) as i:
             lines = {l.split('\t')[0].replace('_', ' ') : numpy.array(l.strip().split('\t')[1:], dtype=numpy.float64) for l in i.readlines()}
         if f_sub == 1:
@@ -408,6 +438,10 @@ for s in range(1, n_subjects+1):
             feat_lines = {k : numpy.sum([v, lines[k]], axis=0) for k, v in feat_lines.items()}
         for k, v in feat_lines.items():
             assert len(v) == dimensionality
+    if args.spatial_analysis == 'best_features':
+        feat_lines = {k : best for k in feat_lines.keys()}
+    for k, v in feat_lines.items():
+        assert len(v) == dimensionality
     '''
     ###OLD
     sorted_dims = sorted(list(enumerate(lines)), key=lambda item : item[1], reverse=True)
@@ -432,18 +466,32 @@ for s in range(1, n_subjects+1):
         vectors = {k : current_ceiling[v] for k, v in ceiling_keys.items() if 'neg' not in k}
     elif args.computational_model not in ['geppetto', 'gpt2', 'fasttext']:
         ### Pairwise similarities
-        vectors = {k : [abs(model_data[k]-model_data[k_two]) for k_two in full_sub_data.keys() if k_two!=k] for k in full_sub_data.keys()}
+        #vectors = {k : [abs(model_data[k]-model_data[k_two]) for k_two in full_sub_data.keys() if k_two!=k] for k in full_sub_data.keys()}
+        if args.computational_model == 'concretenesssingle':
+            vectors = {k : [abs(model_data[k]-model_data[k_two]) for k_two in model_data.keys()] for k in model_data.keys()}
+        else:
+            vectors = {k : [abs(model_data[k]-model_data[k_two]) for k_two in full_sub_data.keys()] for k in full_sub_data.keys()}
         ### Mixed vectors
         if 'gpt2' in args.computational_model or 'fasttext' in args.computational_model or 'geppetto' in args.computational_model:
             vec_part_one = read_vectors(args)
             shared_keys = [k for k in vec_part_one.keys() if k in vectors.keys()]
             vectors = {k : numpy.hstack((vec_part_one[k], vectors[k])) for k in shared_keys}
 
-    vectors_keys = {tuple(k.replace("_", ' ').split()) : k  for k in vectors.keys()}
-    vectors_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in vectors_keys.items()}
-    vectors = {k : vectors[v] for k, v in vectors_keys.items()}
-    full_sub_data = {k : v for k, v in full_sub_data.items() if k in vectors.keys()}
-    vectors = {k : vectors[k] for k, v in full_sub_data.items()}
+    if args.computational_model == 'concretenesssingle':
+        vectors = {k : numpy.hstack((vectors[k.split()[0]], vectors[k.split()[1]])) for k, v in full_sub_data.items()}
+    else:
+        vectors_keys = {tuple(k.replace("_", ' ').split()) : k  for k in vectors.keys()}
+        vectors_keys = {'{} {}'.format(k[0], k[2]) if len(k)==3 else ' '.join(k) : v for k, v in vectors_keys.items()}
+        vectors = {k : vectors[v] for k, v in vectors_keys.items()}
+        full_sub_data = {k : v for k, v in full_sub_data.items() if k in vectors.keys()}
+        vectors = {k : vectors[k] for k, v in full_sub_data.items()}
+    if 'concreteness' in args.computational_model:
+        with open(os.path.join('resources', '{}_model.vectors'.format(args.computational_model)), 'w') as o:
+            for k, v in vectors.items():
+                o.write('{}\t'.format(k))
+                for val in v:
+                    o.write('{}\t'.format(val))
+                o.write('\n')
 
     ### Aggregating senses if needed
 
@@ -536,15 +584,17 @@ for s in range(1, n_subjects+1):
     '''
     #vectors = {k : vectors[k] for k, v in sub_data.items()}
     ### Standardization
+    if args.computational_model not in ['concreteness', 'concretenesssingle']:
+        
+        numpy_target = numpy.array(list(actual_vectors.values()))
+        if numpy_target.shape == (42, ):
+            numpy_target = numpy_target.reshape(-1, 1)
+            standardized_target = sklearn.preprocessing.StandardScaler().fit_transform(numpy_target)
+            actual_vectors = {k : v for k, v in zip(actual_vectors.keys(), standardized_target.reshape((42,)))}
+        else:
+            standardized_target = sklearn.preprocessing.StandardScaler().fit_transform(numpy_target)
+            actual_vectors = {k : v for k, v in zip(actual_vectors.keys(), standardized_target)}
     #standardized_input = sklearn.preprocessing.StandardScaler().fit_transform(numpy.array(list(actual_brain.values())))
-    numpy_target = numpy.array(list(actual_vectors.values()))
-    if numpy_target.shape == (42, ):
-        numpy_target = numpy_target.reshape(-1, 1)
-        standardized_target = sklearn.preprocessing.StandardScaler().fit_transform(numpy_target)
-        actual_vectors = {k : v for k, v in zip(actual_vectors.keys(), standardized_target.reshape((42,)))}
-    else:
-        standardized_target = sklearn.preprocessing.StandardScaler().fit_transform(numpy_target)
-        actual_vectors = {k : v for k, v in zip(actual_vectors.keys(), standardized_target)}
     #actual_brain = {k : v for k, v in zip(actual_brain.keys(), standardized_input)}
     #    current_ceiling = {k : v for k, v in current_ceiling.items() if k in vectors.keys()}
     #    #current_ceiling = {k : v for k, v in current_ceiling.items() if k in actual_vectors.keys()}
@@ -564,7 +614,39 @@ for s in range(1, n_subjects+1):
         selected_dims = [k[0] for k in sorted_dims[:n_dims]]
 
     combs = list(itertools.combinations(list(actual_vectors.keys()), 2))
+    old_vectors = actual_vectors.copy()
+    del actual_vectors
     for c in tqdm(combs):
+        if args.computational_model in ['concreteness', 'concretenesssingle']:
+            conc_vecs = {k : list() for k in old_vectors.keys()}
+            ### Removing test items
+            for k, v in old_vectors.items():
+                #indices = [k_two for k_two in actual_vectors.keys() if k_two != k]
+                indices = [(k_i, k_two) for k_i, k_two in enumerate(old_vectors.keys()) if k_two not in c]
+                if args.computational_model != 'concretenesssingle':
+                    assert len(v) == 42
+                    assert len(indices) == 40
+                for k_i, k_two in indices:
+                    #if k_two in c:
+                    #    pass
+                    #else:
+                    if 1 == 1:
+                        conc_vecs[k].append(v[k_i])
+
+            actual_vectors = {k : numpy.array(v) for k, v in conc_vecs.items()}
+            for k, v in actual_vectors.items():
+                assert v.shape == (40,)
+            
+            numpy_target = numpy.vstack([v for v in actual_vectors.values()])
+            numpy_target = numpy.array(list(actual_vectors.values()))
+            if numpy_target.shape == (42, ):
+                numpy_target = numpy_target.reshape(-1, 1)
+                standardized_target = sklearn.preprocessing.StandardScaler().fit_transform(numpy_target)
+                actual_vectors = {k : v for k, v in zip(actual_vectors.keys(), standardized_target.reshape((42,)))}
+            else:
+                standardized_target = sklearn.preprocessing.StandardScaler().fit_transform(numpy_target)
+                actual_vectors = {k : v for k, v in zip(actual_vectors.keys(), standardized_target)}
+
         if feature_selection == 'expensive':
             ### Feature selection
             for c_n in c:

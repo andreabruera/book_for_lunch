@@ -1,33 +1,35 @@
-scrivania	4.87	simple	object
-sedia	4.58	simple	object
-tavolo	4.9	simple	object
-armadio	4.67	simple	object
-idea	1.61	simple	information
-opinione	1.93	simple	information
-storia	3.3	simple	information
-giudizio	1.68	simple	information
-libro	4.9	dot	polysemic
-rivista	5	dot	polysemic
-disegno	4.6	dot	polysemic
-catalogo	4.68	dot	polysemic
-esperto	2.85	coercing+simple	information
-domanda	3.36	coercing+simple	information
-problema	2.68	coercing+simple	information
-programma	3.4	coercing+simple	information
-ragione	1.93	coercing+simple	information
-parola	3.56	coercing+simple	information
-busta	4.93	coercing+simple	object
-pacco	4.72	coercing+simple	object
-fiore	5	coercing+simple	object
-moneta	4.89	coercing+simple	object
-palla	5	coercing+simple	object
-biglietto	4.7	coercing+simple	object
-consultare	3.04	coercing	information
-presentare	3.39	coercing	information
-spiegare	1.97	coercing	information
-aprire	3.21	coercing	object
-raccogliere	3.34	coercing	object
-regalare	2.88	coercing	object
-avere	2.18	simple	simple
-cambiare	2.89	simple	simple
-dare	2.83	simple	simple
+scrivania	4.87	0.41	simple	object
+sedia	4.58	1.14	simple	object
+tavolo	4.9	0.41	simple	object
+armadio	4.67	0.62	simple	object
+idea	1.61	1.2	simple	information
+opinione	1.93	1.14	simple	information
+storia	3.3	1.49	simple	information
+giudizio	1.68	1.33	simple	information
+libro	4.9	0.31	dot	polysemic
+rivista	5	0.	dot	polysemic
+disegno	4.6	0.89	dot	polysemic
+catalogo	4.36	1.1	dot	polysemic
+esperto	2.85	1.52	coercing+simple	information
+domanda	3.36	1.7	coercing+simple	information
+problema	2.68	1.47	coercing+simple	information
+programma	3.43	1.45	coercing+simple	information
+ragione	1.93	1.36	coercing+simple	information
+parola	3.56	1.63	coercing+simple	information
+busta	4.93	0.26	coercing+simple	object
+pacco	4.72	0.7	coercing+simple	object
+fiore	5	0.	coercing+simple	object
+moneta	4.89	0.42	coercing+simple	object
+palla	5	0.	coercing+simple	object
+biglietto	4.7	0.65	coercing+simple	object
+consultare	3.04	1.34	coercing	information
+presentare	3.39	1.59	coercing	information
+spiegare	1.97	1.05	coercing	information
+aprire	3.21	1.75	coercing	object
+raccogliere	3.34	1.32	coercing	object
+regalare	2.88	1.42	coercing	object
+avere	2.18	1.25	simple	simple
+cambiare	2.89	1.57	simple	simple
+dare	2.83	1.42	simple	simple
+divano	4.71	1.05
+motivo	2.1	1.21

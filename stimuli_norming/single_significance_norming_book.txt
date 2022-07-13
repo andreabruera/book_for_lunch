@@ -1,0 +1,9 @@
+case	FDR-corrected p-value
+conc_dot	nan
+conc_verb	nan
+conc_simple	nan
+fam_dot	nan
+fam_verb	nan
+fam_simple	nan
+overall_fam_simple	nan
+overall_conc_simple	nan

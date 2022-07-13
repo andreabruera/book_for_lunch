@@ -3,14 +3,18 @@ import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--spatial_analysis', choices=['whole_brain', 'general_semantics',
-                                                   'fedorenko_language', 'control_semantics'],
+                                                   'fedorenko_language', 'control_semantics',
+                                                   'general_control', 'best_features'],
                                           required=True)
 parser.add_argument('--senses', action='store_true', default=False)
 args = parser.parse_args()
 
 models = [
-          'gpt2', 'concreteness', 'fasttext', 
-          'ceiling',
+          #'gpt2', 
+          'concreteness', 
+          'concretenesssingle', 
+          #'fasttext', 
+          #'ceiling',
           #'gpt2_concreteness', 'fasttext_concreteness'
           ]
 
